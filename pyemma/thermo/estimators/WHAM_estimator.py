@@ -73,7 +73,6 @@ class WHAM(_Estimator, _MultiThermModel):
         # done, return estimator (+model?)
         return self
 
-
-
     def log_likelihood(self):
-        raise NotImplementedError("I am not implemented")
+        return (self.N_K_i * (
+            self.f_therm[:, _np.newaxis] - self.b_K_i - self.f[_np.newaxis, :])).sum()
