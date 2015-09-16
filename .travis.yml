@@ -18,6 +18,7 @@ before_install:
 - conda config --set always_yes true 
 - conda config --add channels http://conda.binstar.org/omnia 
 - conda install $common_py_deps 
+- pip install thermotools
 # use a headless plotting backend for matplotlib
 - mkdir -p ~/.config/matplotlib/
 - touch ~/.config/matplotlib/matplotlibrc
