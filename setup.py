@@ -236,6 +236,7 @@ metadata = dict(
                       'joblib==0.8.4',
                       'psutil>=3.1.1',
                       'decorator>=4.0.0',
+                      'thermotools>=0.1.3',
                       ],
     zip_safe=False,
 )
