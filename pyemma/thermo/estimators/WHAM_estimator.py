@@ -1,6 +1,7 @@
 __author__ = 'wehmeyer, mey'
 
 import numpy as _np
+from six.moves import range
 from pyemma._base.estimator import Estimator as _Estimator
 from pyemma.thermo.models.multi_therm import MultiThermModel as _MultiThermModel
 from pyemma.util import types as _types
@@ -33,7 +34,8 @@ class WHAM(_Estimator, _MultiThermModel):
             _types.assert_array(ttraj, ndim=2, kind='i')
             assert _np.shape(ttraj)[1] == 2
         # harvest state counts
-        self.N_K_i_full = _np.zeros((self.nthermo, self.nstates_full, self.nstates_full), dtype=_np.intc)
+        self.N_K_i_full = _np.zeros(
+            shape=(self.nthermo, self.nstates_full, self.nstates_full), dtype=_np.intc)
         for ttraj in trajs:
             for K in range(self.nthermo):
                 for i in range(self.nstates_full):
@@ -70,6 +72,8 @@ class WHAM(_Estimator, _MultiThermModel):
         self.set_model_params(f_therm=fk, f=fi)
         # done, return estimator (+model?)
         return self
+
+
 
     def log_likelihood(self):
         raise NotImplementedError("I am not implemented")
