@@ -80,7 +80,7 @@ class StationaryModel(_Model):
         Returns
         -------
         val: float
-            Equilibrium expectation value fo the given observable
+            Equilibrium expectation value of the given observable
         Notes
         -----
         The equilibrium expectation value of an observable a is defined as follows
