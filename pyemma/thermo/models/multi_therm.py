@@ -56,20 +56,20 @@ class MultiThermModel(_StationaryModel):
     def meval(self, f, *args, **kw):
         """Evaluates the given function call for all models
         Returns the results of the calls in a list
-        Example
-        -------
-        We set up multiple stationary models, one for a reference (ground)
-        state, and two for biased states, and group them in a
-        MultiStationaryModel.
-        >>> from pyemma.thermo import StationaryModel, MultiThermModel
-        >>> m_1 = StationaryModel(f=[1.0, 0], label='biased 1')
-        >>> m_2 = StationaryModel(f=[2.0, 0], label='biased 2')
-        >>> m_mult = MultiThermModel(f=[0, 0], label='unbiased', models=[m_1, m_2])
-        Compute the stationary distribution for the two biased models
-        >>> m_mult.meval('stationary_distribution')
-        [array([ 0.73105858,  0.26894142]), array([ 0.88079708,  0.11920292])]
         """
         # !! PART OF ORIGINAL DOCSTRING INCOMPATIBLE WITH CLASS INTERFACE !!
+        # Example
+        # -------
+        # We set up multiple stationary models, one for a reference (ground)
+        # state, and two for biased states, and group them in a
+        # MultiStationaryModel.
+        # >>> from pyemma.thermo import StationaryModel, MultiThermModel
+        # >>> m_1 = StationaryModel(f=[1.0, 0], label='biased 1')
+        # >>> m_2 = StationaryModel(f=[2.0, 0], label='biased 2')
+        # >>> m_mult = MultiThermModel([m_1, m_2], [0, 0], label='unbiased')
+        # Compute the stationary distribution for the two biased models
+        # >>> m_mult.meval('stationary_distribution')
+        # [array([ 0.73105858,  0.26894142]), array([ 0.88079708,  0.11920292])]
         # We set up multiple Markov state models for different temperatures
         # and group them in a MultiStationaryModel.
         # >>> import numpy as np
@@ -89,4 +89,3 @@ class MultiThermModel(_StationaryModel):
         #          204.64109413,   143.49286817,   104.62539128,    78.83331598])
         # !! END OF INCOMPATIBLE PART !!
         return [_call_member(M, f, *args, **kw) for M in self.models]
-        
