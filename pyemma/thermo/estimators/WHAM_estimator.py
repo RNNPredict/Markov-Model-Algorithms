@@ -20,14 +20,14 @@ class WHAM(_Estimator, _MultiThermModel):
     >>> traj2 = np.array([[1,1,1,1,1,1,1,1,1,1],[0,1,0,1,0,1,1,0,0,1]]).T
     >>> wham.estimate([traj1, traj2])
     >>> wham.log_likelihood()
-    -9.8058241189353108
+    -14.109797499127744
     >>> wham.N_K_i
     array([[7, 3],
            [5, 5]], dtype=int32)
     >>> wham.stationary_distribution
-    array([ 0.38173596,  0.61826404])
+    array([ 0.54034801,  0.45965199])
     >>> wham.meval('stationary_distribution')
-    [array([ 0.38173596,  0.61826404]), array([ 0.50445327,  0.49554673])]
+    [array([ 0.54034801,  0.45965199]), array([ 0.65965199,  0.34034801])]
     """
     def __init__(self, b_K_i_full, stride=1, dt_traj='1 step', maxiter=100000, maxerr=1e-5):
         self.b_K_i_full = _types.ensure_ndarray(b_K_i_full, ndim=2, kind='numeric')
