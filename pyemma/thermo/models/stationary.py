@@ -3,6 +3,7 @@ __author__ = 'noe'
 import numpy as _np
 from pyemma._base.model import Model as _Model
 from pyemma.util import types as _types
+from thermotool.lse import logsumexp as _logsumexp
 
 class StationaryModel(_Model):
 
@@ -41,8 +42,7 @@ class StationaryModel(_Model):
             _types.assert_array(f, ndim=1, kind='numeric')
             f = _np.array(f, dtype=float)
             if normalize_f:
-                from pyemma.thermo.pytram.util import logsumexp
-                f -= logsumexp(f)  # normalize on the level on energies to achieve sum_i pi_i = 1
+                f += _logsumexp(-f)  # normalize on the level on energies to achieve sum_i pi_i = 1
             pi = _np.exp(-f)
         else:  # if f is not given, use pi. pi can't be None at this point
             _types.assert_array(pi, ndim=1, kind='numeric')
