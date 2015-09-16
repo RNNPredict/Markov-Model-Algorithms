@@ -24,10 +24,11 @@ class WHAM(_Estimator, _MultiThermModel):
     >>> wham.N_K_i
     array([[7, 3],
            [5, 5]], dtype=int32)
-    >>> np.around(wham.stationary_distribution, decimals=4)
-    array([ 0.5403,  0.4597])
-    >>> np.around(wham.meval('stationary_distribution'), decimals=4)
-    array([[ 0.5403,  0.4597], [ 0.6597,  0.3403]])
+    >>> np.around(wham.stationary_distribution, decimals=2)
+    array([ 0.54,  0.46])
+    >>> np.around(wham.meval('stationary_distribution'), decimals=2)
+    array([[ 0.54,  0.46],
+           [ 0.66,  0.34]])
     """
     def __init__(self, b_K_i_full, stride=1, dt_traj='1 step', maxiter=100000, maxerr=1e-5):
         self.b_K_i_full = _types.ensure_ndarray(b_K_i_full, ndim=2, kind='numeric')
