@@ -68,22 +68,25 @@ class MultiThermModel(_StationaryModel):
         Compute the stationary distribution for the two biased models
         >>> m_mult.meval('stationary_distribution')
         [array([ 0.73105858,  0.26894142]), array([ 0.88079708,  0.11920292])]
-        We set up multiple Markov state models for different temperatures
-        and group them in a MultiStationaryModel.
-        >>> import numpy as np
-        >>> from pyemma.msm import MSM
-        >>> from pyemma.thermo import MultiThermModel
-        >>> b = 20  # transition barrier in kJ / mol
-        >>> temps = np.arange(300, 500, 25)  # temperatures 300 to 500 K
-        >>> p_trans = [np.exp(- b / kT) for kT in 0.00831*temps ]
-        >>> # build MSMs for different temperatures
-        >>> msms = [MSM(P=np.array([[1.0-p, p], [p, 1.0-p]])) for p in p_trans]
-        >>> # build Multi-MSM
-        >>> msm_mult = MultiThermModel(pi=msms[0].stationary_distribution, label='300 K', models=msms)
-        Compute the timescales and see how they decay with temperature
-        Greetings to Arrhenius.
-        >>> np.hstack(msm_mult.meval('timescales'))
-        array([ 1523.83827932,   821.88040004,   484.06386176,   305.87880068,
-                 204.64109413,   143.49286817,   104.62539128,    78.83331598])
         """
+        # !! PART OF ORIGINAL DOCSTRING INCOMPATIBLE WITH CLASS INTERFACE !!
+        # We set up multiple Markov state models for different temperatures
+        # and group them in a MultiStationaryModel.
+        # >>> import numpy as np
+        # >>> from pyemma.msm import MSM
+        # >>> from pyemma.thermo import MultiThermModel
+        # >>> b = 20  # transition barrier in kJ / mol
+        # >>> temps = np.arange(300, 500, 25)  # temperatures 300 to 500 K
+        # >>> p_trans = [np.exp(- b / kT) for kT in 0.00831*temps ]
+        # >>> # build MSMs for different temperatures
+        # >>> msms = [MSM(P=np.array([[1.0-p, p], [p, 1.0-p]])) for p in p_trans]
+        # >>> # build Multi-MSM
+        # >>> msm_mult = MultiThermModel(pi=msms[0].stationary_distribution, label='300 K', models=msms)
+        # Compute the timescales and see how they decay with temperature
+        # Greetings to Arrhenius.
+        # >>> np.hstack(msm_mult.meval('timescales'))
+        # array([ 1523.83827932,   821.88040004,   484.06386176,   305.87880068,
+        #          204.64109413,   143.49286817,   104.62539128,    78.83331598])
+        # !! END OF INCOMPATIBLE PART !!
         return [_call_member(M, f, *args, **kw) for M in self.models]
+        
