@@ -84,7 +84,6 @@ class WHAM(_Estimator, _MultiThermModel):
             old_fk[:] = fk[:]
             _wham.iterate_fk(old_fi, self.b_K_i, scratch_M, fk)
             _wham.iterate_fi(log_N_K, log_N_i, fk, self.b_K_i, scratch_T, fi)
-            _wham.normalize_fi(fi, scratch_M)
             old_fki = self.b_K_i + old_fi[_np.newaxis, :] - old_fk[:, _np.newaxis]
             fki = self.b_K_i + fi[_np.newaxis, :] - fk[:, _np.newaxis]
             if _np.linalg.norm(old_fki - fki) < self.maxerr:
