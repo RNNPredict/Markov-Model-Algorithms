@@ -1,4 +1,4 @@
-__author__ = 'wehmeyer, mey'
+__author__ = 'wehmeyer, mey, paul'
 
 import numpy as _np
 from six.moves import range
@@ -91,32 +91,30 @@ class TRAM(_Estimator, _MultiThermModel):
             M_x[i:i+len(valid)] = reverse_map[ttraj[valid, 1].astype(int)]
             b_K_x[:,i:i+len(valid)] = ttraj[valid, 2:].T
             i += len(valid)
-            
-        # run estimator
-        log_nu_K_i = _np.zeros(shape=N_K_i.shape, dtype=_np.float64)
-        f_K_i = _np.zeros(shape=N_K_i.shape, dtype=_np.float64)
-        log_R_K_i = _np.zeros(shape=N_K_i.shape, dtype=_np.float64)
-        scratch_T = _np.zeros(shape=N_K_i.shape[0], dtype=_np.float64)
-        scratch_M = _np.zeros(shape=N_K_i.shape[1], dtype=_np.float64)
-        _tram.set_lognu(log_nu_K_i, self.count_matrices)
         
         # self.test
         assert _np.all(_np.bincount(M_x) == N_K_i.sum(axis=0))
 
+        # run estimator
+        log_nu_K_i = np.zeros(shape=N_K_i.shape, dtype=np.float64)
+        f_K_i = np.zeros(shape=N_K_i.shape, dtype=np.float64)
+        log_R_K_i = np.zeros(shape=N_K_i.shape, dtype=np.float64)
+        scratch_T = np.zeros(shape=(C_K_ij.shape[0],), dtype=np.float64)
+        scratch_M = np.zeros(shape=(C_K_ij.shape[1],), dtype=np.float64)
+        _tram.set_lognu(log_nu_K_i, C_K_ij)
         old_f_K_i = f_K_i.copy()
+        old_log_nu_K_i = log_nu_K_i.copy()
         for m in range(self.maxiter):
-            tmp_log_nu_K_i = _np.copy(log_nu_K_i)
-            _tram.iterate_lognu(tmp_log_nu_K_i, f_K_i, self.count_matrices, scratch_M, log_nu_K_i)
-            tmp_f_K_i = _np.copy(f_K_i)
-            _tram.iterate_fki(log_nu_K_i, tmp_f_K_i, self.count_matrices, b_K_x, M_x,
+            _tram.iterate_lognu(old_log_nu_K_i, f_K_i, self.count_matrices, scratch_M, log_nu_K_i)
+            _tram.iterate_fki(log_nu_K_i, old_f_K_i, self.count_matrices, b_K_x, M_x,
                 N_K_i, log_R_K_i, scratch_M, scratch_T, f_K_i)
-            nz = (old_f_K_i != 0.0)
-            if (nz.sum() > 0): #debug
-                print 'error:', _np.max(_np.abs((f_K_i[nz] - old_f_K_i[nz])/old_f_K_i[nz])) # debug
-            if (nz.sum() > 0) and (_np.max(_np.abs((f_K_i[nz] - old_f_K_i[nz])/old_f_K_i[nz])) < self.maxerr):
+            if _np.max(_np.abs(f_K_i - old_f_K_i)) < self.maxerr:
                 break
             else:
                 old_f_K_i[:] = f_K_i[:]
+                old_log_nu_K_i[:] = log_nu_K_i[:]
+        f_i = _tram.get_fi(b_K_x, M_x, log_R_K_i, scratch_M, scratch_T)
+        _tram.normalize_fki(f_i, f_K_i, scratch_M)
 
         # get stationary models for the biased ensembles
         z_K_i = _np.exp(-f_K_i)
@@ -126,14 +124,12 @@ class TRAM(_Estimator, _MultiThermModel):
             normalize_energy=True, label="K=%d" % K) for K in range(self.nthermo)]
 
         # get stationary model for the unbiased ensemble (bias=0)
-        f_ground_i = _np.zeros(shape=N_K_i.shape[1], dtype=_np.float64)
-        _tram.f_ground_state(b_K_x, M_x, log_R_K_i, scratch_M, scratch_T, f_ground_i)
-        sm0 = _StationaryModel(pi=_np.exp(-f_ground_i), f=f_ground_i, label="unbiased")
+        sm0 = _StationaryModel(pi=_np.exp(-f_i), f=f_i, label="unbiased")
 
         sms = [sm0] + sms
 
         # set model parameters to self
-        # TODO: find out what that even means...
+        # TODO: FIX NEXT THREE LINES!!!
         fk = -_np.log(z_K_i.sum(axis=1))
         fi = f_K_i[self.ground_state]
         self.set_model_params(models=sms, f_therm=fk, f=fi)
