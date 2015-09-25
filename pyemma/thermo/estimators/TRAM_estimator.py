@@ -6,7 +6,10 @@ from pyemma._base.estimator import Estimator as _Estimator
 from pyemma.thermo.models.multi_therm import MultiThermModel as _MultiThermModel
 from pyemma.thermo import StationaryModel as _StationaryModel
 from pyemma.util import types as _types
-from thermotools import tram as _tram
+try:
+    from thermotools import tram as _tram
+except ImportError:
+    pass
 
 class TRAM(_Estimator, _MultiThermModel):
     def __init__(self, lag=1, ground_state=0, count_mode='sliding', stride=1, dt_traj='1 step', maxiter=100000, maxerr=1e-5):
@@ -96,12 +99,12 @@ class TRAM(_Estimator, _MultiThermModel):
         assert _np.all(_np.bincount(M_x) == N_K_i.sum(axis=0))
 
         # run estimator
-        log_nu_K_i = np.zeros(shape=N_K_i.shape, dtype=np.float64)
-        f_K_i = np.zeros(shape=N_K_i.shape, dtype=np.float64)
-        log_R_K_i = np.zeros(shape=N_K_i.shape, dtype=np.float64)
-        scratch_T = np.zeros(shape=(C_K_ij.shape[0],), dtype=np.float64)
-        scratch_M = np.zeros(shape=(C_K_ij.shape[1],), dtype=np.float64)
-        _tram.set_lognu(log_nu_K_i, C_K_ij)
+        log_nu_K_i = _np.zeros(shape=N_K_i.shape, dtype=_np.float64)
+        f_K_i = _np.zeros(shape=N_K_i.shape, dtype=_np.float64)
+        log_R_K_i = _np.zeros(shape=N_K_i.shape, dtype=_np.float64)
+        scratch_T = _np.zeros(shape=(self.count_matrices.shape[0],), dtype=_np.float64)
+        scratch_M = _np.zeros(shape=(self.count_matrices.shape[1],), dtype=_np.float64)
+        _tram.set_lognu(log_nu_K_i, self.count_matrices)
         old_f_K_i = f_K_i.copy()
         old_log_nu_K_i = log_nu_K_i.copy()
         for m in range(self.maxiter):
