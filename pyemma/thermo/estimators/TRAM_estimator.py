@@ -6,6 +6,8 @@ from pyemma._base.estimator import Estimator as _Estimator
 from pyemma.thermo.models.multi_therm import MultiThermModel as _MultiThermModel
 from pyemma.thermo import StationaryModel as _StationaryModel
 from pyemma.util import types as _types
+from msmtools.estimation import largest_connected_set as _largest_connected_set
+from msmtools.estimation import count_matrix as _count_matrix
 try:
     from thermotools import tram as _tram
 except ImportError:
@@ -32,7 +34,6 @@ class TRAM(_Estimator, _MultiThermModel):
             with T_i time steps. The first column is the thermodynamic state
             index, the second column is the configuration state index.
         """
-        from msmtools.estimation import largest_connected_set
         
         assert self.stride==1, 'stride > 1 not yet supported' # TODO: figure out C-matrix estimation with stride+lag
         # format input if needed
@@ -61,22 +62,19 @@ class TRAM(_Estimator, _MultiThermModel):
                         (ttraj[:, 0] == K) * (ttraj[:, 1] == i)).sum()
 
         # count matrix
-        self.count_matrices_full = _np.zeros((self.nthermo, self.nstates_full, self.nstates_full), dtype=_np.intc)
+        self.count_matrices_full = _np.zeros(
+            shape=(self.nthermo, self.nstates_full, self.nstates_full), dtype=_np.intc)
         for ttraj in trajs:
-            t = 0
-            while t < ttraj.shape[0]-self.lag:
-                K = int(ttraj[t, 0])
-                if _np.all(ttraj[0, t:t+self.lag+1] == K):
-                    self.count_matrices_full[K, int(ttraj[t, 1]), int(ttraj[t+self.lag, 1])] += 1
-                if self.count_mode=='sliding':
-                    t += 1
-                else:
-                    t += self.lag
+            K = int(ttraj[0, 0])
+            if not _np.all(ttraj[:, 0] == K):
+                raise NotImplementedError("thermodynamic state switching not yet supported")
+            self.count_matrices_full[K, :, :] += _count_matrix(
+                ttraj[:, 1].astype(_np.intc), self.lag, nstates=self.nstates_full)
 
         # restrict to connected set
         C_sum = self.count_matrices_full.sum(axis=0)
         # TODO: report fraction of lost counts
-        cset = largest_connected_set(C_sum)
+        cset = _largest_connected_set(C_sum)
         self.active_set = cset
         # correct counts
         self.count_matrices = self.count_matrices_full[:,cset[:,_np.newaxis],cset]
