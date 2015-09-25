@@ -69,7 +69,8 @@ class TRAM(_Estimator, _MultiThermModel):
             if not _np.all(ttraj[:, 0] == K):
                 raise NotImplementedError("thermodynamic state switching not yet supported")
             self.count_matrices_full[K, :, :] += _count_matrix(
-                ttraj[:, 1].astype(_np.intc), self.lag, nstates=self.nstates_full)
+                ttraj[:, 1].astype(_np.intc), self.lag, nstates=self.nstates_full,
+                sparse_return=False).astype(_np.intc)
 
         # restrict to connected set
         C_sum = self.count_matrices_full.sum(axis=0)
