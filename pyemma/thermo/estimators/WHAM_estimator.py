@@ -73,21 +73,22 @@ class WHAM(_Estimator, _MultiThermModel):
         # run estimator
         # TODO: use supplied initial guess!
         # TODO: give convergence feedback!
-        fi = _np.zeros(shape=log_N_i.shape, dtype=_np.float64)
-        fk = _np.zeros(shape=log_N_K.shape, dtype=_np.float64)
-        old_fi = _np.empty_like(fi)
-        old_fk = _np.empty_like(fk)
-        scratch_M = _np.empty_like(fi)
-        scratch_T = _np.empty_like(fk)
-        for i in range(self.maxiter):
-            old_fi[:] = fi[:]
-            old_fk[:] = fk[:]
-            _wham.iterate_fk(old_fi, self.b_K_i, scratch_M, fk)
-            _wham.iterate_fi(log_N_K, log_N_i, fk, self.b_K_i, scratch_M, scratch_T, fi)
-            old_fki = self.b_K_i + old_fi[_np.newaxis, :] - old_fk[:, _np.newaxis]
-            fki = self.b_K_i + fi[_np.newaxis, :] - fk[:, _np.newaxis]
-            if _np.linalg.norm(old_fki - fki) < self.maxerr:
-                break
+        fk, fi = _wham.estimate(self.N_K_i, self.b_K_i, maxiter=self.maxiter, maxerr=self.maxerr)
+        # fi = _np.zeros(shape=log_N_i.shape, dtype=_np.float64)
+        # fk = _np.zeros(shape=log_N_K.shape, dtype=_np.float64)
+        # old_fi = _np.empty_like(fi)
+        # old_fk = _np.empty_like(fk)
+        # scratch_M = _np.empty_like(fi)
+        # scratch_T = _np.empty_like(fk)
+        # for i in range(self.maxiter):
+        #     old_fi[:] = fi[:]
+        #     old_fk[:] = fk[:]
+        #     _wham.iterate_fk(old_fi, self.b_K_i, scratch_M, fk)
+        #     _wham.iterate_fi(log_N_K, log_N_i, fk, self.b_K_i, scratch_M, scratch_T, fi)
+        #     old_fki = self.b_K_i + old_fi[_np.newaxis, :] - old_fk[:, _np.newaxis]
+        #     fki = self.b_K_i + fi[_np.newaxis, :] - fk[:, _np.newaxis]
+        #     if _np.linalg.norm(old_fki - fki) < self.maxerr:
+        #         break
         # get stationary models
         sms = [_StationaryModel(
             pi=_np.exp(fk[K, _np.newaxis] - self.b_K_i[K, :] - fi),
