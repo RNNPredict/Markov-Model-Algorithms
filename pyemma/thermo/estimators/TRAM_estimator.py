@@ -98,31 +98,14 @@ class TRAM(_Estimator, _MultiThermModel):
         assert _np.all(_np.bincount(M_x) == N_K_i.sum(axis=0))
 
         # run estimator
-        log_nu_K_i = _np.zeros(shape=N_K_i.shape, dtype=_np.float64)
-        f_K_i = _np.zeros(shape=N_K_i.shape, dtype=_np.float64)
-        log_R_K_i = _np.zeros(shape=N_K_i.shape, dtype=_np.float64)
-        scratch_T = _np.zeros(shape=(self.count_matrices.shape[0],), dtype=_np.float64)
-        scratch_M = _np.zeros(shape=(self.count_matrices.shape[1],), dtype=_np.float64)
-        _tram.set_lognu(log_nu_K_i, self.count_matrices)
-        old_f_K_i = f_K_i.copy()
-        old_log_nu_K_i = log_nu_K_i.copy()
-        for m in range(self.maxiter):
-            _tram.iterate_lognu(old_log_nu_K_i, f_K_i, self.count_matrices, scratch_M, log_nu_K_i)
-            _tram.iterate_fki(log_nu_K_i, old_f_K_i, self.count_matrices, b_K_x, M_x,
-                N_K_i, log_R_K_i, scratch_M, scratch_T, f_K_i)
-            if _np.max(_np.abs(f_K_i - old_f_K_i)) < self.maxerr:
-                break
-            else:
-                old_f_K_i[:] = f_K_i[:]
-                old_log_nu_K_i[:] = log_nu_K_i[:]
-        f_i = _tram.get_fi(b_K_x, M_x, log_R_K_i, scratch_M, scratch_T)
-        _tram.normalize_fki(f_i, f_K_i, scratch_M)
+        f_K_i, f_i, f_K, log_nu_K_i = _tram.estimate(
+            self.count_matrices, N_K_i, b_K_x, M_x, maxiter=self.maxiter, maxerr=self.maxerr)
 
         # get stationary models for the biased ensembles
         z_K_i = _np.exp(-f_K_i)
         sms = [_StationaryModel(
-            pi=z_K_i[K,:]/z_K_i[K,:].sum(),
-            f=f_K_i[K,:],
+            pi=z_K_i[K, :]/z_K_i[K, :].sum(),
+            f=f_K_i[K, :],
             normalize_energy=True, label="K=%d" % K) for K in range(self.nthermo)]
 
         # get stationary model for the unbiased ensemble (bias=0)
@@ -131,12 +114,8 @@ class TRAM(_Estimator, _MultiThermModel):
         sms = [sm0] + sms
 
         # set model parameters to self
-        # TODO: FIX NEXT THREE LINES!!!
-        fk = -_np.log(z_K_i.sum(axis=1))
-        fi = f_K_i[self.ground_state]
-        self.set_model_params(models=sms, f_therm=fk, f=fi)
+        self.set_model_params(models=sms, f_therm=f_K, f=f_i)
         # done, return estimator (+model?)
-        # TODO: reweight to ground state
         return self
 
     def log_likelihood(self):
