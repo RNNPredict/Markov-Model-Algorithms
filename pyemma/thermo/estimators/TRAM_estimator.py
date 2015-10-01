@@ -7,10 +7,9 @@ from pyemma.thermo.models.multi_therm import MultiThermModel as _MultiThermModel
 from pyemma.msm import MSM as _MSM
 from pyemma.util import types as _types
 from msmtools.estimation import largest_connected_set as _largest_connected_set
-from msmtools.estimation import count_matrix as _count_matrix
 try:
     from thermotools import tram as _tram
-    from thermotools.util import count_matrices as _count_matrices
+    from thermotools import util as _util
 except ImportError:
     pass
 
@@ -51,16 +50,13 @@ class TRAM(_Estimator, _MultiThermModel):
         self.nthermo = int(max(_np.max(ttraj[:, 0]) for ttraj in trajs))+1
         #print 'M,T:', self.nstates_full, self.nthermo
 
-        # state visitis
-        self.N_K_i_full = _np.zeros(shape=(self.nthermo, self.nstates_full), dtype=_np.intc)
-        for ttraj in trajs:
-            for K in range(self.nthermo):
-                for i in range(self.nstates_full):
-                    self.N_K_i_full[K, i] += (
-                        (ttraj[:, 0] == K) * (ttraj[:, 1] == i)).sum()
+        # find state visits and dimensions
+        self.N_K_i_full = _util.state_counts(trajs)
+        self.nstates_full = self.N_K_i_full.shape[1]
+        self.nthermo = self.N_K_i_full.shape[0]
 
         # count matrices
-        self.count_matrices_full = _count_matrices(
+        self.count_matrices_full = _util.count_matrices(
             [_np.ascontiguousarray(t[:, :2]).astype(_np.intc) for t in trajs], self.lag,
             sliding=self.count_mode, sparse_return=False, nstates=self.nstates_full)
 
@@ -94,9 +90,13 @@ class TRAM(_Estimator, _MultiThermModel):
             self.count_matrices, N_K_i, b_K_x, M_x,
             maxiter=self.maxiter, maxerr=self.maxerr, log_nu_K_i=self.log_nuki, f_K_i=self.fki)
 
-        # get stationary models for the biased ensembles
-        scratch = _np.zeros(shape=fi.shape, dtype=_np.float64)
-        models = [_MSM(_tram.get_p(self.log_nuki, self.fki, self.count_matrices, scratch, K)) for K in range(self.nthermo)]
+        # HOTFIX UNTIL MSM SUPPORTS DISCONNECTED SETS:
+        from pyemma.thermo import StationaryModel as _StationaryModel
+        models = [_StationaryModel(
+            pi=_np.exp(fk[K] - self.fki[K, :]), f=self.fki[K, :],
+            normalize_energy=False, label="K=%d" % K) for K in range(self.nthermo)]
+        #scratch = _np.zeros(shape=fi.shape, dtype=_np.float64)
+        #models = [_MSM(_tram.get_p(self.log_nuki, self.fki, self.count_matrices, scratch, K)) for K in range(self.nthermo)]
 
         # set model parameters to self
         self.set_model_params(models=models, f_therm=fk, f=fi)

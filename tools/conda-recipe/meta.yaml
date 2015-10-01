@@ -25,7 +25,7 @@ requirements:
     - six
     - psutil
     - decorator
-    - thermotools >=0.1.6
+    - thermotools >=0.1.7
 
   run:
     - python
@@ -41,7 +41,7 @@ requirements:
     - six
     - psutil
     - decorator
-    - thermotools >=0.1.6
+    - thermotools >=0.1.7
 
 test:
   requires:

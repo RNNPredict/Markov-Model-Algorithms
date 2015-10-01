@@ -7,6 +7,7 @@ from pyemma.thermo.models.multi_therm import MultiThermModel as _MultiThermModel
 from pyemma.thermo import StationaryModel as _StationaryModel
 from pyemma.util import types as _types
 from thermotools import wham as _wham
+from thermotools import util as _util
 
 class WHAM(_Estimator, _MultiThermModel):
     """
@@ -60,12 +61,7 @@ class WHAM(_Estimator, _MultiThermModel):
             _types.assert_array(ttraj, ndim=2, kind='i')
             assert _np.shape(ttraj)[1] == 2
         # harvest state counts
-        self.N_K_i_full = _np.zeros(shape=(self.nthermo, self.nstates_full), dtype=_np.intc)
-        for ttraj in trajs:
-            for K in range(self.nthermo):
-                for i in range(self.nstates_full):
-                    self.N_K_i_full[K, i] += (
-                        (ttraj[::self.stride, 0] == K) * (ttraj[::self.stride, 1] == i)).sum()
+        self.N_K_i_full = _util.state_counts(trajs, nthermo=nthermo, nstates=nstates)
         # active set
         # TODO: check for active thermodynamic set!
         self.active_set = _np.where(self.N_K_i_full.sum(axis=0) > 0)[0]
@@ -79,7 +75,7 @@ class WHAM(_Estimator, _MultiThermModel):
         # get stationary models
         sms = [_StationaryModel(
             pi=_np.exp(self.fk[K, _np.newaxis] - self.b_K_i[K, :] - self.fi),
-            f=self.b_K_i[K, :] + self.fi - self.fk[K, _np.newaxis],
+            f=self.b_K_i[K, :] + self.fi,
             normalize_energy=False, label="K=%d" % K) for K in range(self.nthermo)]
         # set model parameters to self
         # TODO: find out what that even means...
