@@ -38,6 +38,9 @@ class WHAM(_Estimator, _MultiThermModel):
         self.maxerr = maxerr
         # set derived quantities
         self.nthermo, self.nstates_full = b_K_i_full.shape
+        # set iteration variables
+        self.fi = None
+        self.fk = None
 
     def _estimate(self, trajs):
         """
@@ -67,36 +70,20 @@ class WHAM(_Estimator, _MultiThermModel):
         # TODO: check for active thermodynamic set!
         self.active_set = _np.where(self.N_K_i_full.sum(axis=0) > 0)[0]
         self.N_K_i = _np.ascontiguousarray(self.N_K_i_full[:, self.active_set])
-        log_N_K = _np.log(self.N_K_i.sum(axis=1)).astype(_np.float64)
-        log_N_i = _np.log(self.N_K_i.sum(axis=0)).astype(_np.float64)
         self.b_K_i = _np.ascontiguousarray(self.b_K_i_full[:, self.active_set], dtype=_np.float64)
         # run estimator
-        # TODO: use supplied initial guess!
         # TODO: give convergence feedback!
-        fk, fi = _wham.estimate(self.N_K_i, self.b_K_i, maxiter=self.maxiter, maxerr=self.maxerr)
-        # fi = _np.zeros(shape=log_N_i.shape, dtype=_np.float64)
-        # fk = _np.zeros(shape=log_N_K.shape, dtype=_np.float64)
-        # old_fi = _np.empty_like(fi)
-        # old_fk = _np.empty_like(fk)
-        # scratch_M = _np.empty_like(fi)
-        # scratch_T = _np.empty_like(fk)
-        # for i in range(self.maxiter):
-        #     old_fi[:] = fi[:]
-        #     old_fk[:] = fk[:]
-        #     _wham.iterate_fk(old_fi, self.b_K_i, scratch_M, fk)
-        #     _wham.iterate_fi(log_N_K, log_N_i, fk, self.b_K_i, scratch_M, scratch_T, fi)
-        #     old_fki = self.b_K_i + old_fi[_np.newaxis, :] - old_fk[:, _np.newaxis]
-        #     fki = self.b_K_i + fi[_np.newaxis, :] - fk[:, _np.newaxis]
-        #     if _np.linalg.norm(old_fki - fki) < self.maxerr:
-        #         break
+        self.fk, self.fi = _wham.estimate(
+            self.N_K_i, self.b_K_i,
+            maxiter=self.maxiter, maxerr=self.maxerr, f_K=self.fk, f_i=self.fi)
         # get stationary models
         sms = [_StationaryModel(
-            pi=_np.exp(fk[K, _np.newaxis] - self.b_K_i[K, :] - fi),
-            f=self.b_K_i[K, :] + fi - fk[K, _np.newaxis],
+            pi=_np.exp(self.fk[K, _np.newaxis] - self.b_K_i[K, :] - self.fi),
+            f=self.b_K_i[K, :] + self.fi - self.fk[K, _np.newaxis],
             normalize_energy=False, label="K=%d" % K) for K in range(self.nthermo)]
         # set model parameters to self
         # TODO: find out what that even means...
-        self.set_model_params(models=sms, f_therm=fk, f=fi)
+        self.set_model_params(models=sms, f_therm=self.fk, f=self.fi)
         # done, return estimator (+model?)
         return self
 

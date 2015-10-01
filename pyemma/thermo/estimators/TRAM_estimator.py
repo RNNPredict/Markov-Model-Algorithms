@@ -4,26 +4,29 @@ import numpy as _np
 from six.moves import range
 from pyemma._base.estimator import Estimator as _Estimator
 from pyemma.thermo.models.multi_therm import MultiThermModel as _MultiThermModel
-from pyemma.thermo import StationaryModel as _StationaryModel
+from pyemma.msm import MSM as _MSM
 from pyemma.util import types as _types
 from msmtools.estimation import largest_connected_set as _largest_connected_set
 from msmtools.estimation import count_matrix as _count_matrix
 try:
     from thermotools import tram as _tram
+    from thermotools.util import count_matrices as _count_matrices
 except ImportError:
     pass
 
 class TRAM(_Estimator, _MultiThermModel):
-    def __init__(self, lag=1, ground_state=0, count_mode='sliding', stride=1, dt_traj='1 step', maxiter=100000, maxerr=1e-5):
+    def __init__(self, lag=1, ground_state=None, count_mode='sliding', dt_traj='1 step', maxiter=1000, maxerr=1e-5):
         self.lag = lag
         self.ground_state = ground_state
         self.count_mode = count_mode
-        self.stride = stride
         self.dt_traj = dt_traj
         self.maxiter = maxiter
         self.maxerr = maxerr
         # set derived quantities
         pass
+        # set iteration variables
+        self.fki = None
+        self.log_nuki = None
 
     def _estimate(self, trajs):
         """
@@ -34,8 +37,6 @@ class TRAM(_Estimator, _MultiThermModel):
             with T_i time steps. The first column is the thermodynamic state
             index, the second column is the configuration state index.
         """
-        
-        assert self.stride==1, 'stride > 1 not yet supported' # TODO: figure out C-matrix estimation with stride+lag
         # format input if needed
         if isinstance(trajs, _np.ndarray):
             trajs = [trajs]
@@ -49,9 +50,6 @@ class TRAM(_Estimator, _MultiThermModel):
         self.nstates_full = int(max(_np.max(ttraj[:, 1]) for ttraj in trajs))+1
         self.nthermo = int(max(_np.max(ttraj[:, 0]) for ttraj in trajs))+1
         #print 'M,T:', self.nstates_full, self.nthermo
-        
-        assert self.count_mode=='sliding', 'only sliding window supported at the moment'
-        # TODO: computation of N_k_i, M_x, b_K_x without sliding window
 
         # state visitis
         self.N_K_i_full = _np.zeros(shape=(self.nthermo, self.nstates_full), dtype=_np.intc)
@@ -61,16 +59,10 @@ class TRAM(_Estimator, _MultiThermModel):
                     self.N_K_i_full[K, i] += (
                         (ttraj[:, 0] == K) * (ttraj[:, 1] == i)).sum()
 
-        # count matrix
-        self.count_matrices_full = _np.zeros(
-            shape=(self.nthermo, self.nstates_full, self.nstates_full), dtype=_np.intc)
-        for ttraj in trajs:
-            K = int(ttraj[0, 0])
-            if not _np.all(ttraj[:, 0] == K):
-                raise NotImplementedError("thermodynamic state switching not yet supported")
-            self.count_matrices_full[K, :, :] += _count_matrix(
-                ttraj[:, 1].astype(_np.intc), self.lag, nstates=self.nstates_full,
-                sparse_return=False).astype(_np.intc)
+        # count matrices
+        self.count_matrices_full = _count_matrices(
+            [_np.ascontiguousarray(t[:, :2]).astype(_np.intc) for t in trajs], self.lag,
+            sliding=self.count_mode, sparse_return=False, nstates=self.nstates_full)
 
         # restrict to connected set
         C_sum = self.count_matrices_full.sum(axis=0)
@@ -98,23 +90,16 @@ class TRAM(_Estimator, _MultiThermModel):
         assert _np.all(_np.bincount(M_x) == N_K_i.sum(axis=0))
 
         # run estimator
-        f_K_i, f_i, f_K, log_nu_K_i = _tram.estimate(
-            self.count_matrices, N_K_i, b_K_x, M_x, maxiter=self.maxiter, maxerr=self.maxerr)
+        self.fki, fi, fk, self.log_nuki = _tram.estimate(
+            self.count_matrices, N_K_i, b_K_x, M_x,
+            maxiter=self.maxiter, maxerr=self.maxerr, log_nu_K_i=self.log_nuki, f_K_i=self.fki)
 
         # get stationary models for the biased ensembles
-        z_K_i = _np.exp(-f_K_i)
-        sms = [_StationaryModel(
-            pi=z_K_i[K, :]/z_K_i[K, :].sum(),
-            f=f_K_i[K, :],
-            normalize_energy=True, label="K=%d" % K) for K in range(self.nthermo)]
-
-        # get stationary model for the unbiased ensemble (bias=0)
-        sm0 = _StationaryModel(pi=_np.exp(-f_i), f=f_i, label="unbiased")
-
-        sms = [sm0] + sms
+        scratch = _np.zeros(shape=fi.shape, dtype=_np.float64)
+        models = [_MSM(_tram.get_p(self.log_nuki, self.fki, self.count_matrices, scratch, K)) for K in range(self.nthermo)]
 
         # set model parameters to self
-        self.set_model_params(models=sms, f_therm=f_K, f=f_i)
+        self.set_model_params(models=models, f_therm=fk, f=fi)
         # done, return estimator (+model?)
         return self
 
