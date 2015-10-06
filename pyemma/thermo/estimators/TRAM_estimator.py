@@ -71,16 +71,15 @@ class TRAM(_Estimator, _MultiThermModel):
         state_counts = self.state_counts_full[:, cset]
         state_counts = _np.require(state_counts, dtype=_np.intc, requirements=['C', 'A'])
         # create flat bias energy arrays
-        reverse_map = _np.ones(self.nstates_full, dtype=_np.intc) * _np.iinfo(_np.intc).max
-        reverse_map[cset] = _np.arange(len(cset))
-        state_sequence = _np.empty(shape=state_counts.sum(), dtype=_np.intc)
-        bias_energy_sequence = _np.zeros(shape=(self.nthermo, state_counts.sum()), dtype=_np.float64)
-        i = 0
-        for ttraj in trajs:
-            valid = _np.where(_np.in1d(ttraj[:, 1], cset))[0]
-            state_sequence[i:i+len(valid)] = reverse_map[ttraj[valid, 1].astype(int)]
-            bias_energy_sequence[:,i:i+len(valid)] = ttraj[valid, 2:].T
-            i += len(valid)
+        state_sequence_full = []
+        bias_energy_sequence_full = []
+        for traj in trajs:
+            state_sequence_full.append(traj[:, :1])
+            bias_energy_sequence_full.append(ttraj[:, 2:].T)
+        state_sequence_full = _np.array(state_sequence_full, dtype=_np.intc)
+        bias_energy_sequence_full = _np.array(bias_energy_sequence_full, dtype=_np.float64)
+        state_counts, bias_energy_sequence = _util.restrict_samples_to_cset(
+            state_sequence_full, bias_energy_sequence_full, self.active_set)
         
         # self.test
         assert _np.all(_np.bincount(state_sequence) == state_counts.sum(axis=0))
