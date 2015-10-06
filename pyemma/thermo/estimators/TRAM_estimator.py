@@ -7,6 +7,7 @@ from pyemma.thermo.models.multi_therm import MultiThermModel as _MultiThermModel
 from pyemma.msm import MSM as _MSM
 from pyemma.util import types as _types
 from msmtools.estimation import largest_connected_set as _largest_connected_set
+from msmtools.estimation import largest_connected_submatrix as _largest_connected_submatrix
 try:
     from thermotools import tram as _tram
     from thermotools import util as _util
@@ -21,8 +22,8 @@ class TRAM(_Estimator, _MultiThermModel):
         self.dt_traj = dt_traj
         self.maxiter = maxiter
         self.maxerr = maxerr
-        # set derived quantities
-        pass
+        # set cset variable
+        self.active_sets = None
         # set iteration variables
         self.biased_conf_energies = None
         self.log_lagrangian_mult = None
@@ -87,15 +88,15 @@ class TRAM(_Estimator, _MultiThermModel):
         # run estimator
         self.biased_conf_energies, conf_energies, therm_energies, self.log_lagrangian_mult = _tram.estimate(
             self.count_matrices, state_counts, bias_energy_sequence, state_sequence,
-            maxiter=self.maxiter, maxerr=self.maxerr, log_lagrangian_mult=self.log_lagrangian_mult, biased_conf_energies=self.biased_conf_energies)
+            maxiter=self.maxiter, maxerr=self.maxerr,
+            log_lagrangian_mult=self.log_lagrangian_mult,
+            biased_conf_energies=self.biased_conf_energies)
 
-        # HOTFIX UNTIL MSM SUPPORTS DISCONNECTED SETS:
-        from pyemma.thermo import StationaryModel as _StationaryModel
-        models = [_StationaryModel(
-            pi=_np.exp(therm_energies[K] - self.biased_conf_energies[K, :]), f=self.biased_conf_energies[K, :],
-            normalize_energy=False, label="K=%d" % K) for K in range(self.nthermo)]
-        #scratch = _np.zeros(shape=conf_energies.shape, dtype=_np.float64)
-        #models = [_MSM(_tram.get_p(self.log_lagrangian_mult, self.biased_conf_energies, self.count_matrices, scratch, K)) for K in range(self.nthermo)]
+        # compute models
+        scratch = _np.zeros(shape=conf_energies.shape, dtype=_np.float64)
+        fmsms = [_tram.get_p(self.log_lagrangian_mult, self.biased_conf_energies, self.count_matrices, scratch, K) for K in range(self.nthermo)]
+        self.active_sets = [_largest_connected_set(msm) for msm in fmsms]
+        models = [_MSM(_largest_connected_submatrix(msm, lcc=lcc)) for msm, lcc in zip(fmsms, self.active_sets)]
 
         # set model parameters to self
         self.set_model_params(models=models, f_therm=therm_energies, f=conf_energies)
