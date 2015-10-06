@@ -22,7 +22,7 @@ class WHAM(_Estimator, _MultiThermModel):
     >>> wham = wham.estimate([traj1, traj2])
     >>> np.around(wham.log_likelihood(), decimals=4)
     -14.1098
-    >>> wham.N_K_i
+    >>> wham.state_counts
     array([[7, 3],
            [5, 5]], dtype=int32)
     >>> np.around(wham.stationary_distribution, decimals=2)
@@ -31,17 +31,17 @@ class WHAM(_Estimator, _MultiThermModel):
     array([[ 0.54,  0.46],
            [ 0.66,  0.34]])
     """
-    def __init__(self, b_K_i_full, stride=1, dt_traj='1 step', maxiter=100000, maxerr=1e-5):
-        self.b_K_i_full = _types.ensure_ndarray(b_K_i_full, ndim=2, kind='numeric')
+    def __init__(self, bias_energies_full, stride=1, dt_traj='1 step', maxiter=100000, maxerr=1e-5):
+        self.bias_energies_full = _types.ensure_ndarray(bias_energies_full, ndim=2, kind='numeric')
         self.stride = stride
         self.dt_traj = dt_traj
         self.maxiter = maxiter
         self.maxerr = maxerr
         # set derived quantities
-        self.nthermo, self.nstates_full = b_K_i_full.shape
+        self.nthermo, self.nstates_full = bias_energies_full.shape
         # set iteration variables
-        self.fi = None
-        self.fk = None
+        self.conf_energies = None
+        self.therm_energies = None
 
     def _estimate(self, trajs):
         """
@@ -61,28 +61,30 @@ class WHAM(_Estimator, _MultiThermModel):
             _types.assert_array(ttraj, ndim=2, kind='i')
             assert _np.shape(ttraj)[1] == 2
         # harvest state counts
-        self.N_K_i_full = _util.state_counts(trajs, nthermo=nthermo, nstates=nstates)
+        self.state_counts_full = _util.state_counts(trajs, nthermo=nthermo, nstates=nstates)
         # active set
         # TODO: check for active thermodynamic set!
-        self.active_set = _np.where(self.N_K_i_full.sum(axis=0) > 0)[0]
-        self.N_K_i = _np.ascontiguousarray(self.N_K_i_full[:, self.active_set])
-        self.b_K_i = _np.ascontiguousarray(self.b_K_i_full[:, self.active_set], dtype=_np.float64)
+        self.active_set = _np.where(self.state_counts_full.sum(axis=0) > 0)[0]
+        self.state_counts = _np.ascontiguousarray(self.state_counts_full[:, self.active_set])
+        self.bias_energies = _np.ascontiguousarray(
+            self.bias_energies_full[:, self.active_set], dtype=_np.float64)
         # run estimator
         # TODO: give convergence feedback!
-        self.fk, self.fi = _wham.estimate(
-            self.N_K_i, self.b_K_i,
-            maxiter=self.maxiter, maxerr=self.maxerr, f_K=self.fk, f_i=self.fi)
+        self.therm_energies, self.conf_energies = _wham.estimate(
+            self.state_counts, self.bias_energies,
+            maxiter=self.maxiter, maxerr=self.maxerr,
+            f_K=self.therm_energies, f_i=self.conf_energies)
         # get stationary models
         sms = [_StationaryModel(
-            pi=_np.exp(self.fk[K, _np.newaxis] - self.b_K_i[K, :] - self.fi),
-            f=self.b_K_i[K, :] + self.fi,
+            pi=_np.exp(self.therm_energies[K, _np.newaxis] - self.bias_energies[K, :] - self.conf_energies),
+            f=self.bias_energies[K, :] + self.conf_energies,
             normalize_energy=False, label="K=%d" % K) for K in range(self.nthermo)]
         # set model parameters to self
         # TODO: find out what that even means...
-        self.set_model_params(models=sms, f_therm=self.fk, f=self.fi)
+        self.set_model_params(models=sms, f_therm=self.therm_energies, f=self.conf_energies)
         # done, return estimator (+model?)
         return self
 
     def log_likelihood(self):
-        return (self.N_K_i * (
-            self.f_therm[:, _np.newaxis] - self.b_K_i - self.f[_np.newaxis, :])).sum()
+        return (self.state_counts * (
+            self.f_therm[:, _np.newaxis] - self.bias_energies - self.f[_np.newaxis, :])).sum()

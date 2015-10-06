@@ -24,8 +24,8 @@ class TRAM(_Estimator, _MultiThermModel):
         # set derived quantities
         pass
         # set iteration variables
-        self.fki = None
-        self.log_nuki = None
+        self.biased_conf_energies = None
+        self.log_lagrangian_mult = None
 
     def _estimate(self, trajs):
         """
@@ -51,9 +51,9 @@ class TRAM(_Estimator, _MultiThermModel):
         #print 'M,T:', self.nstates_full, self.nthermo
 
         # find state visits and dimensions
-        self.N_K_i_full = _util.state_counts(trajs)
-        self.nstates_full = self.N_K_i_full.shape[1]
-        self.nthermo = self.N_K_i_full.shape[0]
+        self.state_counts_full = _util.state_counts(trajs)
+        self.nstates_full = self.state_counts_full.shape[1]
+        self.nthermo = self.state_counts_full.shape[0]
 
         # count matrices
         self.count_matrices_full = _util.count_matrices(
@@ -66,44 +66,44 @@ class TRAM(_Estimator, _MultiThermModel):
         cset = _largest_connected_set(C_sum)
         self.active_set = cset
         # correct counts
-        self.count_matrices = self.count_matrices_full[:,cset[:,_np.newaxis],cset]
-        self.count_matrices = _np.require(self.count_matrices, dtype=_np.intc ,requirements=['C','A'])        
-        N_K_i = self.N_K_i_full[:,cset]
-        N_K_i = _np.require(N_K_i, dtype=_np.intc, requirements=['C','A'])
+        self.count_matrices = self.count_matrices_full[:, cset[:, _np.newaxis], cset]
+        self.count_matrices = _np.require(self.count_matrices, dtype=_np.intc ,requirements=['C', 'A'])        
+        state_counts = self.state_counts_full[:, cset]
+        state_counts = _np.require(state_counts, dtype=_np.intc, requirements=['C', 'A'])
         # create flat bias energy arrays
-        reverse_map = _np.ones(self.nstates_full,dtype=_np.intc)*_np.iinfo(_np.intc).max
+        reverse_map = _np.ones(self.nstates_full, dtype=_np.intc) * _np.iinfo(_np.intc).max
         reverse_map[cset] = _np.arange(len(cset))
-        M_x = _np.empty(shape=N_K_i.sum(), dtype=_np.intc)
-        b_K_x = _np.zeros(shape=(self.nthermo, N_K_i.sum()), dtype=_np.float64)
+        state_sequence = _np.empty(shape=state_counts.sum(), dtype=_np.intc)
+        bias_energy_sequence = _np.zeros(shape=(self.nthermo, state_counts.sum()), dtype=_np.float64)
         i = 0
         for ttraj in trajs:
             valid = _np.where(_np.in1d(ttraj[:, 1], cset))[0]
-            M_x[i:i+len(valid)] = reverse_map[ttraj[valid, 1].astype(int)]
-            b_K_x[:,i:i+len(valid)] = ttraj[valid, 2:].T
+            state_sequence[i:i+len(valid)] = reverse_map[ttraj[valid, 1].astype(int)]
+            bias_energy_sequence[:,i:i+len(valid)] = ttraj[valid, 2:].T
             i += len(valid)
         
         # self.test
-        assert _np.all(_np.bincount(M_x) == N_K_i.sum(axis=0))
+        assert _np.all(_np.bincount(state_sequence) == state_counts.sum(axis=0))
 
         # run estimator
-        self.fki, fi, fk, self.log_nuki = _tram.estimate(
-            self.count_matrices, N_K_i, b_K_x, M_x,
-            maxiter=self.maxiter, maxerr=self.maxerr, log_nu_K_i=self.log_nuki, f_K_i=self.fki)
+        self.biased_conf_energies, conf_energies, therm_energies, self.log_lagrangian_mult = _tram.estimate(
+            self.count_matrices, state_counts, bias_energy_sequence, state_sequence,
+            maxiter=self.maxiter, maxerr=self.maxerr, log_lagrangian_mult=self.log_lagrangian_mult, biased_conf_energies=self.biased_conf_energies)
 
         # HOTFIX UNTIL MSM SUPPORTS DISCONNECTED SETS:
         from pyemma.thermo import StationaryModel as _StationaryModel
         models = [_StationaryModel(
-            pi=_np.exp(fk[K] - self.fki[K, :]), f=self.fki[K, :],
+            pi=_np.exp(therm_energies[K] - self.biased_conf_energies[K, :]), f=self.biased_conf_energies[K, :],
             normalize_energy=False, label="K=%d" % K) for K in range(self.nthermo)]
-        #scratch = _np.zeros(shape=fi.shape, dtype=_np.float64)
-        #models = [_MSM(_tram.get_p(self.log_nuki, self.fki, self.count_matrices, scratch, K)) for K in range(self.nthermo)]
+        #scratch = _np.zeros(shape=conf_energies.shape, dtype=_np.float64)
+        #models = [_MSM(_tram.get_p(self.log_lagrangian_mult, self.biased_conf_energies, self.count_matrices, scratch, K)) for K in range(self.nthermo)]
 
         # set model parameters to self
-        self.set_model_params(models=models, f_therm=fk, f=fi)
+        self.set_model_params(models=models, f_therm=therm_energies, f=conf_energies)
         # done, return estimator (+model?)
         return self
 
     def log_likelihood(self):
         raise Exception('not implemented')
-        #return (self.N_K_i * (
+        #return (self.state_counts * (
         #    self.f_therm[:, _np.newaxis] - self.b_K_i - self.f[_np.newaxis, :])).sum()
