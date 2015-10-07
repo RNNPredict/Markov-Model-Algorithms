@@ -7,7 +7,6 @@ from pyemma.thermo.models.multi_therm import MultiThermModel as _MultiThermModel
 from pyemma.msm import MSM as _MSM
 from pyemma.util import types as _types
 from msmtools.estimation import largest_connected_set as _largest_connected_set
-from msmtools.estimation import largest_connected_submatrix as _largest_connected_submatrix
 try:
     from thermotools import tram as _tram
     from thermotools import util as _util
@@ -24,7 +23,7 @@ class TRAM(_Estimator, _MultiThermModel):
         self.maxiter = maxiter
         self.maxerr = maxerr
         # set cset variable
-        self.active_sets = None
+        self.model_active_set = None
         # set iteration variables
         self.biased_conf_energies = None
         self.log_lagrangian_mult = None
@@ -65,39 +64,62 @@ class TRAM(_Estimator, _MultiThermModel):
         # restrict to connected set
         C_sum = self.count_matrices_full.sum(axis=0)
         # TODO: report fraction of lost counts
-        cset = _largest_connected_set(C_sum)
+        cset = _largest_connected_set(C_sum, directed=True)
         self.active_set = cset
         # correct counts
         self.count_matrices = self.count_matrices_full[:, cset[:, _np.newaxis], cset]
-        self.count_matrices = _np.require(self.count_matrices, dtype=_np.intc ,requirements=['C', 'A'])        
+        self.count_matrices = _np.require(self.count_matrices, dtype=_np.intc ,requirements=['C', 'A'])
         state_counts = self.state_counts_full[:, cset]
         state_counts = _np.require(state_counts, dtype=_np.intc, requirements=['C', 'A'])
         # create flat bias energy arrays
-        state_sequence_full = []
-        bias_energy_sequence_full = []
+        state_sequence_full = None
+        bias_energy_sequence_full = None
         for traj in trajs:
-            state_sequence_full.append(traj[:, :1])
-            bias_energy_sequence_full.append(ttraj[:, 2:].T)
-        state_sequence_full = _np.array(state_sequence_full, dtype=_np.intc)
-        bias_energy_sequence_full = _np.array(bias_energy_sequence_full, dtype=_np.float64)
-        state_counts, bias_energy_sequence = _util.restrict_samples_to_cset(
+            if state_sequence_full is None and bias_energy_sequence_full is None:
+                state_sequence_full = traj[:, :2]
+                bias_energy_sequence_full = traj[:, 2:]
+            else:
+                state_sequence_full = _np.concatenate(
+                    (state_sequence_full, traj[:, :2]), axis=0)
+                bias_energy_sequence_full = _np.concatenate(
+                    (bias_energy_sequence_full, traj[:, 2:]), axis=0)
+        state_sequence_full = _np.ascontiguousarray(state_sequence_full.astype(_np.intc))
+        bias_energy_sequence_full = _np.ascontiguousarray(
+            bias_energy_sequence_full.astype(_np.float64).transpose())
+        state_sequence, bias_energy_sequence = _util.restrict_samples_to_cset(
             state_sequence_full, bias_energy_sequence_full, self.active_set)
         
         # self.test
-        assert _np.all(_np.bincount(state_sequence) == state_counts.sum(axis=0))
+        assert _np.all(_np.bincount(state_sequence[:, 1]) == state_counts.sum(axis=0))
 
         # run estimator
         self.biased_conf_energies, conf_energies, therm_energies, self.log_lagrangian_mult = _tram.estimate(
-            self.count_matrices, state_counts, bias_energy_sequence, state_sequence,
+            self.count_matrices, state_counts, bias_energy_sequence, _np.ascontiguousarray(state_sequence[:, 1]),
             maxiter=self.maxiter, maxerr=self.maxerr,
             log_lagrangian_mult=self.log_lagrangian_mult,
             biased_conf_energies=self.biased_conf_energies)
 
+        print conf_energies
+        print therm_energies
         # compute models
-        scratch = _np.zeros(shape=conf_energies.shape, dtype=_np.float64)
-        fmsms = [_tram.get_p(self.log_lagrangian_mult, self.biased_conf_energies, self.count_matrices, scratch, K) for K in range(self.nthermo)]
-        self.active_sets = [_largest_connected_set(msm) for msm in fmsms]
-        models = [_MSM(_largest_connected_submatrix(msm, lcc=lcc)) for msm, lcc in zip(fmsms, self.active_sets)]
+        fmsms = [_tram.estimate_transition_matrix(
+            self.log_lagrangian_mult, self.biased_conf_energies,
+            self.count_matrices, K) for K in range(self.nthermo)]
+        from msmtools.analysis import is_transition_matrix as _is_tm
+        from msmtools.analysis import is_connected as _is_cn
+        from msmtools.analysis import is_reversible as _is_rv
+        for idx, msm in enumerate(fmsms):
+            print idx, _is_tm(msm), _is_cn(msm), _is_rv(msm, mu=_np.exp(-self.biased_conf_energies[idx, :]))
+        self.model_active_set = [_largest_connected_set(msm, directed=False) for msm in fmsms]
+        for idx, lcc in enumerate(self.model_active_set):
+            print idx, self.biased_conf_energies[idx, lcc]
+        #self.model_active_set = [_largest_connected_set(
+        #    self.count_matrices[K, :, :], directed=True) for K in range(self.nthermo)]
+        fmsms = [_np.ascontiguousarray(
+            (msm[lcc, :])[:, lcc]) for msm, lcc in zip(fmsms, self.model_active_set)]
+        for idx, msm in enumerate(fmsms):
+            print idx, _is_tm(msm), _is_cn(msm), _is_rv(msm, mu=_np.exp(-self.biased_conf_energies[idx, self.model_active_set[idx]])), msm.shape
+        models = [_MSM(msm) for msm in fmsms]
 
         # set model parameters to self
         self.set_model_params(models=models, f_therm=therm_energies, f=conf_energies)
