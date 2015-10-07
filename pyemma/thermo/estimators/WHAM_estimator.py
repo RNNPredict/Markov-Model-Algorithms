@@ -7,6 +7,7 @@ from pyemma.thermo.models.multi_therm import MultiThermModel as _MultiThermModel
 from pyemma.thermo import StationaryModel as _StationaryModel
 from pyemma.util import types as _types
 from thermotools import wham as _wham
+from thermotools import util as _util
 
 class WHAM(_Estimator, _MultiThermModel):
     """
@@ -21,7 +22,7 @@ class WHAM(_Estimator, _MultiThermModel):
     >>> wham = wham.estimate([traj1, traj2])
     >>> np.around(wham.log_likelihood(), decimals=4)
     -14.1098
-    >>> wham.N_K_i
+    >>> wham.state_counts
     array([[7, 3],
            [5, 5]], dtype=int32)
     >>> np.around(wham.stationary_distribution, decimals=2)
@@ -38,6 +39,9 @@ class WHAM(_Estimator, _MultiThermModel):
         self.maxerr = maxerr
         # set derived quantities
         self.nthermo, self.nstates_full = bias_energies_full.shape
+        # set iteration variables
+        self.conf_energies = None
+        self.therm_energies = None
 
     def _estimate(self, trajs):
         """
@@ -51,7 +55,6 @@ class WHAM(_Estimator, _MultiThermModel):
         # format input if needed
         if isinstance(trajs, _np.ndarray):
             trajs = [trajs]
-
         # validate input
         assert _types.is_list(trajs)
         for ttraj in trajs:
@@ -59,55 +62,35 @@ class WHAM(_Estimator, _MultiThermModel):
             assert _np.shape(ttraj)[1] == 2
 
         # harvest state counts
-        self.N_K_i_full = _np.zeros(shape=(self.nthermo, self.nstates_full), dtype=_np.intc)
-        for ttraj in trajs:
-            for K in range(self.nthermo):
-                for i in range(self.nstates_full):
-                    self.N_K_i_full[K, i] += (
-                        (ttraj[::self.stride, 0] == K) * (ttraj[::self.stride, 1] == i)).sum()
+        self.state_counts_full = _util.state_counts(trajs, nthermo=self.nthermo, nstates=self.nstates_full)
 
         # active set
         # TODO: check for active thermodynamic set!
-        self.active_set = _np.where(self.N_K_i_full.sum(axis=0) > 0)[0]
-        self.N_K_i = _np.ascontiguousarray(self.N_K_i_full[:, self.active_set])
-        log_N_K = _np.log(self.N_K_i.sum(axis=1)).astype(_np.float64)
-        log_N_i = _np.log(self.N_K_i.sum(axis=0)).astype(_np.float64)
-        self.bias_energies_active = _np.ascontiguousarray(self.bias_energies_full[:, self.active_set], dtype=_np.float64)
+        self.active_set = _np.where(self.state_counts_full.sum(axis=0) > 0)[0]
+        self.state_counts = _np.ascontiguousarray(self.state_counts_full[:, self.active_set])
+        self.bias_energies = _np.ascontiguousarray(
+            self.bias_energies_full[:, self.active_set], dtype=_np.float64)
 
         # run estimator
-        # TODO: use supplied initial guess!
         # TODO: give convergence feedback!
-        fk, fi = _wham.estimate(self.N_K_i, self.bias_energies_active, maxiter=self.maxiter, maxerr=self.maxerr)
-
-        # fi = _np.zeros(shape=log_N_i.shape, dtype=_np.float64)
-        # fk = _np.zeros(shape=log_N_K.shape, dtype=_np.float64)
-        # old_fi = _np.empty_like(fi)
-        # old_fk = _np.empty_like(fk)
-        # scratch_M = _np.empty_like(fi)
-        # scratch_T = _np.empty_like(fk)
-        # for i in range(self.maxiter):
-        #     old_fi[:] = fi[:]
-        #     old_fk[:] = fk[:]
-        #     _wham.iterate_fk(old_fi, self.b_K_i, scratch_M, fk)
-        #     _wham.iterate_fi(log_N_K, log_N_i, fk, self.b_K_i, scratch_M, scratch_T, fi)
-        #     old_fki = self.b_K_i + old_fi[_np.newaxis, :] - old_fk[:, _np.newaxis]
-        #     fki = self.b_K_i + fi[_np.newaxis, :] - fk[:, _np.newaxis]
-        #     if _np.linalg.norm(old_fki - fki) < self.maxerr:
-        #         break
+        self.therm_energies, self.conf_energies = _wham.estimate(
+            self.state_counts, self.bias_energies,
+            maxiter=self.maxiter, maxerr=self.maxerr,
+            f_K=self.therm_energies, f_i=self.conf_energies)
 
         # get stationary models
         sms = [_StationaryModel(
-            pi=_np.exp(fk[K, _np.newaxis] - self.bias_energies_active[K, :] - fi),
-            f=self.bias_energies_active[K, :] + fi - fk[K, _np.newaxis],
+            pi=_np.exp(self.therm_energies[K, _np.newaxis] - self.bias_energies[K, :] - self.conf_energies),
+            f=self.bias_energies[K, :] + self.conf_energies,
             normalize_energy=False, label="K=%d" % K) for K in range(self.nthermo)]
 
         # set model parameters to self
         # TODO: find out what that even means...
-        self.set_model_params(models=sms, f_therm=fk, f=fi)
+        self.set_model_params(models=sms, f_therm=self.therm_energies, f=self.conf_energies)
 
         # done, return estimator (+model?)
         return self
 
     def log_likelihood(self):
-        return (self.N_K_i * (
-            self.f_therm[:, _np.newaxis] - self.bias_energies_active - self.f[_np.newaxis, :])).sum()
+        return (self.state_counts * (
+            self.f_therm[:, _np.newaxis] - self.bias_energies - self.f[_np.newaxis, :])).sum()

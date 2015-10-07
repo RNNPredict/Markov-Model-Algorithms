@@ -3,6 +3,7 @@ __author__ = 'noe'
 import numpy as _np
 from pyemma.thermo.models.stationary import StationaryModel as _StationaryModel
 from pyemma._base.model import call_member as _call_member
+from pyemma._base.model import Model as _Model
 from pyemma.util import types as _types
 
 class MultiThermModel(_StationaryModel):
@@ -47,9 +48,8 @@ class MultiThermModel(_StationaryModel):
         # check and set other parameters
         _types.assert_array(f_therm, ndim=1, kind='numeric')
         f_therm = _np.array(f_therm, dtype=float)
-        from pyemma._base.model import Model
         for m in models:
-            assert issubclass(m.__class__, Model)
+            assert issubclass(m.__class__, _Model)
         self.update_model_params(models=models, f_therm=f_therm)
 
     # TODO: actually this is a general construct for SampledMSMs and MTherm models. Can we generalize the code?
