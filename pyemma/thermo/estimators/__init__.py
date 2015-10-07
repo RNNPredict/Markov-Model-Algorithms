@@ -16,4 +16,5 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from pyemma.thermo.estimators.WHAM_estimator import WHAM
+from pyemma.thermo.estimators.DTRAM_estimator import DTRAM
 from pyemma.thermo.estimators.TRAM_estimator import TRAM

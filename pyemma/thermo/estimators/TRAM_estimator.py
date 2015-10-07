@@ -14,7 +14,8 @@ except ImportError:
     pass
 
 class TRAM(_Estimator, _MultiThermModel):
-    def __init__(self, lag=1, ground_state=0, count_mode='sliding', stride=1, dt_traj='1 step', maxiter=100000, maxerr=1e-5):
+    def __init__(self, lag=1, ground_state=0, count_mode='sliding', stride=1,
+                 dt_traj='1 step', maxiter=100000, maxerr=1e-5):
         self.lag = lag
         self.ground_state = ground_state
         self.count_mode = count_mode

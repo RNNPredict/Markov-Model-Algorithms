@@ -16,4 +16,4 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from pyemma.thermo.models import StationaryModel, MultiThermModel
-from pyemma.thermo.estimators import WHAM, TRAM
+from pyemma.thermo.estimators import WHAM, TRAM, DTRAM
