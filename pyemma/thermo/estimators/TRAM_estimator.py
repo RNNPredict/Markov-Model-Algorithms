@@ -99,26 +99,13 @@ class TRAM(_Estimator, _MultiThermModel):
             log_lagrangian_mult=self.log_lagrangian_mult,
             biased_conf_energies=self.biased_conf_energies)
 
-        print conf_energies
-        print therm_energies
         # compute models
         fmsms = [_tram.estimate_transition_matrix(
             self.log_lagrangian_mult, self.biased_conf_energies,
             self.count_matrices, K) for K in range(self.nthermo)]
-        from msmtools.analysis import is_transition_matrix as _is_tm
-        from msmtools.analysis import is_connected as _is_cn
-        from msmtools.analysis import is_reversible as _is_rv
-        for idx, msm in enumerate(fmsms):
-            print idx, _is_tm(msm), _is_cn(msm), _is_rv(msm, mu=_np.exp(-self.biased_conf_energies[idx, :]))
         self.model_active_set = [_largest_connected_set(msm, directed=False) for msm in fmsms]
-        for idx, lcc in enumerate(self.model_active_set):
-            print idx, self.biased_conf_energies[idx, lcc]
-        #self.model_active_set = [_largest_connected_set(
-        #    self.count_matrices[K, :, :], directed=True) for K in range(self.nthermo)]
         fmsms = [_np.ascontiguousarray(
             (msm[lcc, :])[:, lcc]) for msm, lcc in zip(fmsms, self.model_active_set)]
-        for idx, msm in enumerate(fmsms):
-            print idx, _is_tm(msm), _is_cn(msm), _is_rv(msm, mu=_np.exp(-self.biased_conf_energies[idx, self.model_active_set[idx]])), msm.shape
         models = [_MSM(msm) for msm in fmsms]
 
         # set model parameters to self
