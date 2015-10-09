@@ -62,10 +62,10 @@ def T_matrix(energy):
 
 
 class TestTRAM(unittest.TestCase):
-    def compute_nice(self, reversible):
+    def test_5_state_model(self):
         bias_energies = np.zeros((2,5))
         bias_energies[0,:] = np.array([1.0,0.0,10.0,0.0,1.0])
-        bias_energies[1,:] = np.array([np.inf,0.0,0.0,0.0,np.inf])
+        bias_energies[1,:] = np.array([100.0,0.0,0.0,0.0,100.0])
         T = np.zeros((2,5,5))
         T[0,:,:] = T_matrix(bias_energies[0,:])
         T[1,:,:] = T_matrix(bias_energies[1,:])
@@ -82,6 +82,10 @@ class TestTRAM(unittest.TestCase):
         log_pi_K_i = tram.biased_conf_energies.copy()
         log_pi_K_i[0,:] -= np.min(log_pi_K_i[0,:])
         log_pi_K_i[1,:] -= np.min(log_pi_K_i[1,:])
+        
+        #import sys
+        #print>>sys.stderr, log_pi_K_i
+        #print>>sys.stderr, bias_energies
 
         assert np.allclose(log_pi_K_i, bias_energies, atol=0.1)
 
