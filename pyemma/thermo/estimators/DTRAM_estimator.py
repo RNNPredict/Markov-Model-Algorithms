@@ -9,33 +9,33 @@ class DTRAM(_Estimator, _MultiThermModel):
 
     def __init__(self, bias_energies_full, lag=1, count_mode='sliding', connectivity='largest',
                  dt_traj='1 step', maxiter=100000, maxerr=1e-5):
-        """
-        Example
-        -------
-        >>> from pyemma.thermo import DTRAM
-        >>> import numpy as np
-        >>> B = np.array([[0, 0],[0.5, 1.0]])
-        >>> dtram = DTRAM(B)
-        >>> traj1 = np.array([[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,1,1,1,0,0,0]]).T
-        >>> traj2 = np.array([[1,1,1,1,1,1,1,1,1,1],[0,1,0,1,0,1,1,0,0,1]]).T
-        >>> dtram.estimate([traj1, traj2])
-        >>> dtram.log_likelihood()
-        -9.8058241189353108
+        # """
+        # Example
+        # -------
+        # >>> from pyemma.thermo import DTRAM
+        # >>> import numpy as np
+        # >>> B = np.array([[0, 0],[0.5, 1.0]])
+        # >>> dtram = DTRAM(B)
+        # >>> traj1 = np.array([[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,1,1,1,0,0,0]]).T
+        # >>> traj2 = np.array([[1,1,1,1,1,1,1,1,1,1],[0,1,0,1,0,1,1,0,0,1]]).T
+        # >>> dtram.estimate([traj1, traj2])
+        # >>> dtram.log_likelihood()
+        # -9.8058241189353108
 
-        >>> dtram.count_matrices
-        array([[[5, 1],
-                [1, 2]],
+        # >>> dtram.count_matrices
+        # array([[[5, 1],
+        #         [1, 2]],
 
-               [[1, 4],
-                [3, 1]]], dtype=int32)
+        #        [[1, 4],
+        #         [3, 1]]], dtype=int32)
 
-        >>> dtram.stationary_distribution
-        array([ 0.38173596,  0.61826404])
+        # >>> dtram.stationary_distribution
+        # array([ 0.38173596,  0.61826404])
 
-        >>> dtram.meval('stationary_distribution')
-        [array([ 0.38173596,  0.61826404]), array([ 0.50445327,  0.49554673])]
+        # >>> dtram.meval('stationary_distribution')
+        # [array([ 0.38173596,  0.61826404]), array([ 0.50445327,  0.49554673])]
 
-        """
+        # """
         # set all parameters
         self.bias_energies_full = _types.ensure_ndarray(bias_energies_full, ndim=2, kind='numeric')
         self.lag = lag
@@ -112,5 +112,6 @@ class DTRAM(_Estimator, _MultiThermModel):
 
 
     def log_likelihood(self):
-        nonzero = self.count_matrices.nonzero()
-        return _np.sum(self.count_matrices[nonzero] * _np.log(self.transition_matrices[nonzero]))
+        # nonzero = self.count_matrices.nonzero()
+        # return _np.sum(self.count_matrices[nonzero] * _np.log(self.transition_matrices[nonzero]))
+        pass
