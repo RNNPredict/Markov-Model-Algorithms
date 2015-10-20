@@ -9,6 +9,7 @@ from pyemma.util import types as _types
 from msmtools.estimation import largest_connected_set as _largest_connected_set
 try:
     from thermotools import tram as _tram
+    from thermotools import mbar as _mbar
     from thermotools import util as _util
 except ImportError:
     pass
