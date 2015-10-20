@@ -1,14 +1,19 @@
 __author__ = 'noe'
 
 import numpy as _np
+from six.moves import range
 from pyemma._base.estimator import Estimator as _Estimator
 from pyemma.thermo.models.multi_therm import MultiThermModel as _MultiThermModel
+from pyemma.msm import MSM as _MSM
 from pyemma.util import types as _types
+from msmtools.estimation import largest_connected_set as _largest_connected_set
+from thermotools import dtram as _dtram
+from thermotools import util as _util
 
 class DTRAM(_Estimator, _MultiThermModel):
 
     def __init__(self, bias_energies_full, lag=1, count_mode='sliding', connectivity='largest',
-                 dt_traj='1 step', maxiter=100000, maxerr=1e-5):
+                 dt_traj='1 step', maxiter=100000, maxerr=1e-5, err_out=0, lll_out=0):
         # """
         # Example
         # -------
@@ -46,9 +51,13 @@ class DTRAM(_Estimator, _MultiThermModel):
         self.dt_traj = dt_traj
         self.maxiter = maxiter
         self.maxerr = maxerr
-
+        self.err_out = err_out
+        self.lll_out = lll_out
         # set derived quantities
         self.nthermo, self.nstates_full = bias_energies_full.shape
+        # set iteration variables
+        self.conf_energies = None
+        self.log_lagrangian_mult = None
 
 
     def _estimate(self, trajs):
@@ -64,54 +73,54 @@ class DTRAM(_Estimator, _MultiThermModel):
         # format input if needed
         if isinstance(trajs, _np.ndarray):
             trajs = [trajs]
-
         # validate input
         assert _types.is_list(trajs)
         for ttraj in trajs:
-            _types.assert_array(ttraj, ndim=2, kind='i')
-            assert _np.shape(ttraj)[1] == 2
+            _types.assert_array(ttraj, ndim=2, kind='f')
+            assert _np.shape(ttraj)[1] >= 2 # TODO: check if == 2 is really necessary
 
-        # harvest transition counts
-        # TODO: replace by an efficient function. See msmtools.estimation.cmatrix
-        # TODO: currently dtram_estimator only likes intc, but this should be changed
-        self.count_matrices_full = _np.zeros((self.nthermo, self.nstates_full, self.nstates_full), dtype=_np.intc)
-        for ttraj in trajs:
-            for t in xrange(_np.shape(ttraj)[0]-self.lag):
-                self.count_matrices_full[ttraj[t, 0], ttraj[t, 1], ttraj[t+self.lag, 1]] += 1
+        # count matrices (like in TRAM)
+        self.count_matrices_full = _util.count_matrices(
+            [_np.ascontiguousarray(t[:, :2]).astype(_np.intc) for t in trajs], self.lag,
+            sliding=self.count_mode, sparse_return=False, nstates=self.nstates_full)
 
-        # connected set
-        from msmtools.estimation import largest_connected_set
-        Cs_flat = self.count_matrices_full.sum(axis=0)
-        self.active_set = largest_connected_set(Cs_flat)
-        self.count_matrices = self.count_matrices_full[:, self.active_set, :][:, :, self.active_set]
-        self.count_matrices = _np.ascontiguousarray(self.count_matrices, dtype=_np.intc)
-        self.bias_energies = self.bias_energies_full[:, self.active_set]
-        self.bias_energies = _np.ascontiguousarray(self.bias_energies, dtype=_np.float64)
+        # restrict to connected set
+        C_sum = self.count_matrices_full.sum(axis=0)
+        # TODO: report fraction of lost counts
+        cset = _largest_connected_set(C_sum, directed=True)
+        self.active_set = cset
+        # correct counts
+        self.count_matrices = self.count_matrices_full[:, cset[:, _np.newaxis], cset]
+        self.count_matrices = _np.require(self.count_matrices, dtype=_np.intc ,requirements=['C', 'A'])
+        # correct bias matrix
+        self.bias_energies = self.bias_energies_full[:, cset]
+        self.bias_energies = _np.require(self.bias_energies, dtype=_np.float64 ,requirements=['C', 'A'])
 
         # run estimator
-        from pyemma.thermo.pytram.dtram.dtram_estimator import DTRAM as pyemma_DTRAM
-        dtram_estimator = pyemma_DTRAM(self.count_matrices, self.bias_energies)
-        dtram_estimator.sc_iteration(maxiter=self.maxiter, ftol=self.maxerr, verbose=False)
-        self.dtram_estimator = dtram_estimator
+        self.therm_energies, self.conf_energies, self.log_lagrangian_mult, err, lll = _dtram.estimate(
+            self.count_matrices, self.bias_energies,
+            maxiter=self.maxiter, maxerr=self.maxerr,
+            log_lagrangian_mult=self.log_lagrangian_mult,
+            conf_energies=self.conf_energies,
+            err_out=self.err_out, lll_out=self.lll_out)
 
-        # compute MSM objects
-        self.transition_matrices = dtram_estimator.estimate_transition_matrices()
-        # TODO: find a robust solution for this (small negative values can occur)
-        self.transition_matrices[_np.where(self.transition_matrices < 0)] = 0.0
-        for i in xrange(self.nthermo):
-            self.transition_matrices[i] /= self.transition_matrices[i].sum(axis=1)[:, None]
-        from pyemma.msm import MSM
-        msms = [MSM(self.transition_matrices[i, :, :]) for i in xrange(self.nthermo)]
-        # compute free energies of thermodynamic states and configuration states
-        f_therm = dtram_estimator.f_K
-        f_state = dtram_estimator.f_i
+        # compute models
+        fmsms = [_dtram.estimate_transition_matrix(
+            self.log_lagrangian_mult, self.bias_energies, self.conf_energies,
+            self.count_matrices, K, _np.zeros(shape=self.conf_energies.shape, dtype=_np.float64)) for K in range(self.nthermo)]
+        self.model_active_set = [_largest_connected_set(msm, directed=False) for msm in fmsms]
+        fmsms = [_np.ascontiguousarray(
+            (msm[lcc, :])[:, lcc]) for msm, lcc in zip(fmsms, self.model_active_set)]
+        models = [_MSM(msm) for msm in fmsms]
+
         # set model parameters to self
-        self.set_model_params(models=msms, f_therm=f_therm, f=f_state)
-        # done, return estimator+model
+        self.set_model_params(models=models, f_therm=therm_energies, f=conf_energies)
+        # done, return estimator (+model?)
         return self
-
 
     def log_likelihood(self):
         # nonzero = self.count_matrices.nonzero()
         # return _np.sum(self.count_matrices[nonzero] * _np.log(self.transition_matrices[nonzero]))
-        pass
+        return _dtram.get_loglikelihood(self.count_matrices, _dtram.estimate_transition_matrices(
+            self.log_lagrangian_mult, self.bias_energies, self.conf_energies,
+            self.count_matrices, _np.zeros(shape=self.conf_energies.shape, dtype=_np.float64)))
