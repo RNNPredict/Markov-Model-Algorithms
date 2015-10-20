@@ -93,4 +93,4 @@ class WHAM(_Estimator, _MultiThermModel):
 
     def log_likelihood(self):
         return (self.state_counts * (
-            self.f_therm[:, _np.newaxis] - self.bias_energies - self.f[_np.newaxis, :])).sum()
+            self.therm_energies[:, _np.newaxis] - self.bias_energies - self.conf_energies[_np.newaxis, :])).sum()
