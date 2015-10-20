@@ -92,6 +92,12 @@ class TRAM(_Estimator, _MultiThermModel):
         # self.test
         assert _np.all(_np.bincount(state_sequence[:, 1]) == state_counts.sum(axis=0))
 
+
+        # run mbar to generate a good initial guess
+        f_therm, f, self.biased_conf_energies = estimate(
+            self.state_counts.sum(axis=1), bias_energy_sequence,
+            _np.ascontiguousarray(state_sequence[:, 1]), maxiter=1000, maxerr=1.0E-8)
+
         # run estimator
         self.biased_conf_energies, conf_energies, therm_energies, self.log_lagrangian_mult = _tram.estimate(
             self.count_matrices, state_counts, bias_energy_sequence, _np.ascontiguousarray(state_sequence[:, 1]),
