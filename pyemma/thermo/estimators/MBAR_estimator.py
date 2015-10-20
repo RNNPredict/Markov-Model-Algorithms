@@ -19,8 +19,8 @@ class MBAR(_Estimator, _MultiThermModel):
         self.dt_traj = dt_traj
         self.maxiter = maxiter
         self.maxerr = maxerr
-        # set derived quantities
-        pass
+        # set iteration variables
+        self.therm_energies = None
 
     def _estimate(self, trajs):
         """
