@@ -21,6 +21,7 @@ requirements:
     - mock
     - msmtools
     - numpy >=1.7
+    - pyyaml
     - scipy
     - six
     - psutil
@@ -37,6 +38,7 @@ requirements:
     - mock
     - msmtools
     - numpy >=1.7
+    - pyyaml
     - scipy
     - six
     - psutil
