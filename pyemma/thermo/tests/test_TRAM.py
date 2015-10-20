@@ -21,6 +21,7 @@ from six.moves import range
 
 import numpy as np
 import pyemma.thermo
+import msmtools
 
 def tower_sample(distribution):
     cdf = np.cumsum(distribution)
@@ -72,22 +73,44 @@ class TestTRAM(unittest.TestCase):
 
         n_samples = 50000
         trajs = []
-        trajs.append(generate_trajectory(T,bias_energies,0,n_samples,0))
-        trajs.append(generate_trajectory(T,bias_energies,0,n_samples,4))
-        trajs.append(generate_trajectory(T,bias_energies,1,n_samples,2))
+        bias_energies_sh = bias_energies - bias_energies[0,:]
+        trajs.append(generate_trajectory(T,bias_energies_sh,0,n_samples,0))
+        trajs.append(generate_trajectory(T,bias_energies_sh,0,n_samples,4))
+        trajs.append(generate_trajectory(T,bias_energies_sh,1,n_samples,2))
 
-        tram = pyemma.thermo.TRAM(lag=1)
+        tram = pyemma.thermo.TRAM(lag=1, maxerr=1E-10)
         tram.estimate(trajs)
 
         log_pi_K_i = tram.biased_conf_energies.copy()
         log_pi_K_i[0,:] -= np.min(log_pi_K_i[0,:])
         log_pi_K_i[1,:] -= np.min(log_pi_K_i[1,:])
-        
-        #import sys
-        #print>>sys.stderr, log_pi_K_i
-        #print>>sys.stderr, bias_energies
 
         assert np.allclose(log_pi_K_i, bias_energies, atol=0.1)
+
+
+    def test_reversible_msm(self):
+        n_states = 100
+        traj_length = 100000
+
+        traj = np.zeros(traj_length, dtype=int)
+        traj[::2] = np.random.randint(1,n_states,size=(traj_length-1)//2+1)
+
+        c = msmtools.estimation.count_matrix(traj, lag=1)
+        while not msmtools.estimation.is_connected(c):
+            traj = np.zeros(traj_length, dtype=int)
+            traj[::2] = np.random.randint(1,n_states,size=(traj_length-1)//2+1)
+            c = msmtools.estimation.count_matrix(traj, lag=1)
+
+        state_counts = np.bincount(traj)[:,np.newaxis]
+        tram_traj = np.zeros((traj_length,3))
+        tram_traj[:,1] = traj
+
+        T_ref = msmtools.estimation.tmatrix(c, reversible=True).toarray()
+        tram = pyemma.thermo.TRAM(lag=1,maxerr=1.E-10)
+        tram.estimate(tram_traj)
+        assert np.allclose(T_ref,  tram.models[0].transition_matrix)
+        # Lagrange multipliers should be > 0
+        assert np.all(tram.log_lagrangian_mult > -1.E300)
 
 if __name__ == "__main__":
     unittest.main()
