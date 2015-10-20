@@ -32,9 +32,9 @@ class TRAM(_Estimator, _MultiThermModel):
         """
         Parameters
         ----------
-        trajs : ndarray(T, 2) or list of ndarray(T_i, 2)
-            Thermodynamic trajectories. Each trajectory is a (T_i, 2)-array
-            with T_i time steps. The first column is the thermodynamic state
+        trajs : ndarray(X, 2+T) or list of ndarray(X_i, 2+T)
+            Thermodynamic trajectories. Each trajectory is a (X_i, 2+T)-array
+            with X_i time steps. The first column is the thermodynamic state
             index, the second column is the configuration state index.
         """
         # format input if needed
