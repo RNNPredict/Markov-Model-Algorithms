@@ -114,7 +114,7 @@ class DTRAM(_Estimator, _MultiThermModel):
         models = [_MSM(msm) for msm in fmsms]
 
         # set model parameters to self
-        self.set_model_params(models=models, f_therm=therm_energies, f=conf_energies)
+        self.set_model_params(models=models, f_therm=self.therm_energies, f=self.conf_energies)
         # done, return estimator (+model?)
         return self
 
