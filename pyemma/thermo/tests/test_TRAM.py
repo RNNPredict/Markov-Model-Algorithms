@@ -78,7 +78,11 @@ class TestTRAM(unittest.TestCase):
         trajs.append(generate_trajectory(T,bias_energies_sh,0,n_samples,4))
         trajs.append(generate_trajectory(T,bias_energies_sh,1,n_samples,2))
 
-        tram = pyemma.thermo.TRAM(lag=1, maxerr=1E-10)
+        logL_history = []
+        def logL_logger(**kwargs):
+            logL_history.append(kwargs['log_likelihood'])
+
+        tram = pyemma.thermo.TRAM(lag=1, maxerr=1E-13, call_back=logL_logger)
         tram.estimate(trajs)
 
         log_pi_K_i = tram.biased_conf_energies.copy()
@@ -87,16 +91,19 @@ class TestTRAM(unittest.TestCase):
 
         assert np.allclose(log_pi_K_i, bias_energies, atol=0.1)
 
+        # lower bound on the log-likelihood must be maximal at convergence
+        assert np.all(logL_history[-1]+1.E-5>=np.array(logL_history[0:-1]))
+
 
     def test_reversible_msm(self):
-        n_states = 100
-        traj_length = 100000
+        n_states = 50
+        traj_length = 10000
 
         traj = np.zeros(traj_length, dtype=int)
         traj[::2] = np.random.randint(1,n_states,size=(traj_length-1)//2+1)
 
         c = msmtools.estimation.count_matrix(traj, lag=1)
-        while not msmtools.estimation.is_connected(c):
+        while not msmtools.estimation.is_connected(c, directed=True):
             traj = np.zeros(traj_length, dtype=int)
             traj[::2] = np.random.randint(1,n_states,size=(traj_length-1)//2+1)
             c = msmtools.estimation.count_matrix(traj, lag=1)
@@ -106,11 +113,24 @@ class TestTRAM(unittest.TestCase):
         tram_traj[:,1] = traj
 
         T_ref = msmtools.estimation.tmatrix(c, reversible=True).toarray()
-        tram = pyemma.thermo.TRAM(lag=1,maxerr=1.E-10)
+
+        logL_history = []
+        def logL_logger(**kwargs):
+            logL_history.append(kwargs['log_likelihood'])
+
+        tram = pyemma.thermo.TRAM(lag=1,maxerr=1.E-20, call_back=logL_logger)
         tram.estimate(tram_traj)
-        assert np.allclose(T_ref,  tram.models[0].transition_matrix)
+        import sys
+        print >> sys.stderr, 'T matrix error:', np.max(np.abs(T_ref-tram.models[0].transition_matrix))
+        pos = np.unravel_index(np.argmax(np.abs(T_ref-tram.models[0].transition_matrix)),T_ref.shape)
+        print >> sys.stderr, 'pos', pos
+        print >> sys.stderr, 'T value', T_ref[pos], tram.models[0].transition_matrix[pos]
+        assert np.allclose(T_ref,  tram.models[0].transition_matrix, atol=1.E-4)
+
         # Lagrange multipliers should be > 0
         assert np.all(tram.log_lagrangian_mult > -1.E300)
+        # lower bound on the log-likelihood must be maximal at convergence
+        assert np.all(logL_history[-1]+1.E-4>=np.array(logL_history[0:-1]))
 
 if __name__ == "__main__":
     unittest.main()
