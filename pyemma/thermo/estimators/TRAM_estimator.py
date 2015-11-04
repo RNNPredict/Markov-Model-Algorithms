@@ -7,18 +7,23 @@ from pyemma.thermo.models.multi_therm import MultiThermModel as _MultiThermModel
 from pyemma.msm import MSM as _MSM
 from pyemma.util import types as _types
 from msmtools.estimation import largest_connected_set as _largest_connected_set
+import warnings
 import sys
 try:
     from thermotools import tram as _tram
     from thermotools import tram_direct as _tram_direct
     from thermotools import mbar as _mbar
+    from thermotools import dtram as _dtram
     from thermotools import util as _util
 except ImportError:
     pass
 
+class EmptyState(RuntimeWarning):
+    pass
+
 class TRAM(_Estimator, _MultiThermModel):
     def __init__(self, lag=1, ground_state=None, count_mode='sliding',
-                 dt_traj='1 step', maxiter=1000, maxerr=1e-5, call_back=None):
+                 dt_traj='1 step', maxiter=1000, maxerr=1e-5, call_back=None, optimize_lagrangian_mult=False, N_dtram_accelerations=0):
         self.lag = lag
         self.ground_state = ground_state
         self.count_mode = count_mode
@@ -32,6 +37,8 @@ class TRAM(_Estimator, _MultiThermModel):
         self.log_lagrangian_mult = None
         self.call_back = call_back
         self.initialization = 'MBAR'
+        self.optimize_lagrangian_mult = optimize_lagrangian_mult
+        self.N_dtram_accelerations = N_dtram_accelerations
 
     def _estimate(self, trajs):
         """
@@ -99,20 +106,22 @@ class TRAM(_Estimator, _MultiThermModel):
         assert _np.all(_np.bincount(state_sequence[:, 0]) == state_counts.sum(axis=1))
         assert _np.all(state_counts >= _np.maximum(self.count_matrices.sum(axis=1), self.count_matrices.sum(axis=2)))
 
-        # initialize with MBAR
+        self.state_counts = state_counts
+
         if self.initialization == 'MBAR' and self.biased_conf_energies is None:
-            # run MBAR for a few steps
-            print >>sys.stderr, 'running MBAR'
+            # initialize with MBAR
+            def MBAR_printer(**kwargs):
+                if kwargs['iteration'] % 100 == 0:
+                     print 'preMBAR', kwargs['iteration'], kwargs['error']
             self.mbar_result  = _mbar.estimate(state_counts.sum(axis=1), bias_energy_sequence,
                                                _np.ascontiguousarray(state_sequence[:, 1]),
-                                               maxiter=100, maxerr=1.0E-8)
+                                               maxiter=100000, maxerr=1.0E-8, call_back=MBAR_printer)
             therm_energies, _, mbar_biased_conf_energies = self.mbar_result
             self.biased_conf_energies = mbar_biased_conf_energies
             print 'therm energies:', therm_energies
-            print 'done'
-            
+
             # adapt the Lagrange multiplers to this result
-            if False:
+            if self.optimize_lagrangian_mult:
                 log_lagrangian_mult = _np.zeros(shape=state_counts.shape, dtype=_np.float64)
                 scratch_M = _np.zeros(shape=state_counts.shape[1], dtype=_np.float64)
                 _tram.init_lagrangian_mult(self.count_matrices, log_lagrangian_mult)
@@ -129,16 +138,44 @@ class TRAM(_Estimator, _MultiThermModel):
                 self.log_lagrangian_mult = new_log_lagrangian_mult
                 print 'done'
 
+        elif self.initialization == 'dTRAM' and self.biased_conf_energies is None:
+            occupied = _np.where(state_counts>0)
+            def preTRAM_printer(**kwargs):
+                if kwargs['iteration'] % 100 == 0:
+                     error = _np.max(_np.abs(kwargs['biased_conf_energies'][occupied]-kwargs['old_biased_conf_energies'][occupied]))
+                     shape = kwargs['old_biased_conf_energies'].shape
+                     argmax = _np.argmax(_np.abs(kwargs['biased_conf_energies']-kwargs['old_biased_conf_energies']))
+                     print 'preTRAM', kwargs['iteration'], error, _np.unravel_index(argmax, shape)#, occupied[argmax]
+            preTRAM_result = _tram_direct.estimate(_np.zeros_like(self.count_matrices), state_counts, bias_energy_sequence,
+                                        _np.ascontiguousarray(state_sequence[:, 1]), maxiter=100000, maxerr=1.E-8, call_back=preTRAM_printer)
+            preTRAM_biased_conf_energies = preTRAM_result[0]
+
+            def dTRAM_printer(**kwargs):
+                if kwargs['iteration'] % 100 == 0:
+                    error = _np.max(_np.abs(kwargs['conf_energies']-kwargs['old_conf_energies']))
+                    print 'dTRAM', kwargs['iteration'], error
+            dTRAM_biases = preTRAM_biased_conf_energies
+            dTRAM_result = _dtram.estimate(self.count_matrices, dTRAM_biases, maxiter=1000000, maxerr=1.E-8, call_back=dTRAM_printer)
+            dTRAM_conf_energies = dTRAM_result[1]
+
+            self.log_lagrangian_mult = dTRAM_result[2]
+            self.biased_conf_energies = dTRAM_conf_energies + dTRAM_biases
+
+        for k in range(state_counts.shape[0]):
+            if state_counts[k,:].sum() == 0:
+                warnings.warn('Thermodynamic state %d contains no samples after reducing to the connected set.'%k, EmptyState)
+            if self.count_matrices[k,:,:].sum() == 0:
+                warnings.warn('Thermodynamic state %d contains no transitions after reducing to the connected set.'%k, EmptyState)
+
         # run estimator
-        self.biased_conf_energies, conf_energies, therm_energies, self.log_lagrangian_mult = _tram_direct.estimate(
+        self.biased_conf_energies, conf_energies, therm_energies, self.log_lagrangian_mult = _tram_direct.estimate( #_direct
             self.count_matrices, state_counts, bias_energy_sequence, _np.ascontiguousarray(state_sequence[:, 1]),
             maxiter=self.maxiter, maxerr=self.maxerr,
             log_lagrangian_mult=self.log_lagrangian_mult,
             biased_conf_energies=self.biased_conf_energies,
-            call_back=self.call_back)
+            call_back=self.call_back,
+            N_dtram_accelerations=self.N_dtram_accelerations)
 
-        self.state_counts = state_counts # debug
-        #return self # debug
         # compute models
         fmsms = [_tram.estimate_transition_matrix(
             self.log_lagrangian_mult, self.biased_conf_energies,
