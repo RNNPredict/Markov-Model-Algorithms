@@ -28,6 +28,7 @@ from . import coordinates
 from . import msm
 from . import util
 from . import plots
+from . import thermo
 
 from ._version import get_versions
 __version__ = get_versions()['version']

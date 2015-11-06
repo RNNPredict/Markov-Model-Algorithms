@@ -8,12 +8,13 @@ from pyemma.msm import MSM as _MSM
 from pyemma.util import types as _types
 from msmtools.estimation import largest_connected_set as _largest_connected_set
 from thermotools import dtram as _dtram
+from thermotools import wham as _wham
 from thermotools import util as _util
 
 class DTRAM(_Estimator, _MultiThermModel):
 
     def __init__(self, bias_energies_full, lag=1, count_mode='sliding', connectivity='largest',
-                 dt_traj='1 step', maxiter=100000, maxerr=1e-5, err_out=0, lll_out=0):
+                 dt_traj='1 step', maxiter=100000, maxerr=1e-5, err_out=0, lll_out=0, use_wham=False):
         # """
         # Example
         # -------
@@ -53,9 +54,11 @@ class DTRAM(_Estimator, _MultiThermModel):
         self.maxerr = maxerr
         self.err_out = err_out
         self.lll_out = lll_out
+        self.use_wham = use_wham
         # set derived quantities
         self.nthermo, self.nstates_full = bias_energies_full.shape
         # set iteration variables
+        self.therm_energies = None
         self.conf_energies = None
         self.log_lagrangian_mult = None
 
@@ -76,13 +79,15 @@ class DTRAM(_Estimator, _MultiThermModel):
         # validate input
         assert _types.is_list(trajs)
         for ttraj in trajs:
-            _types.assert_array(ttraj, ndim=2, kind='f')
+            _types.assert_array(ttraj, ndim=2, kind='i')
             assert _np.shape(ttraj)[1] >= 2 # TODO: check if == 2 is really necessary
 
         # count matrices (like in TRAM)
         self.count_matrices_full = _util.count_matrices(
             [_np.ascontiguousarray(t[:, :2]).astype(_np.intc) for t in trajs], self.lag,
             sliding=self.count_mode, sparse_return=False, nstates=self.nstates_full)
+        # hasrvest state counts (for WHAM)
+        self.state_counts_full = _util.state_counts(trajs, nthermo=self.nthermo, nstates=self.nstates_full)
 
         # restrict to connected set
         C_sum = self.count_matrices_full.sum(axis=0)
@@ -95,9 +100,19 @@ class DTRAM(_Estimator, _MultiThermModel):
         # correct bias matrix
         self.bias_energies = self.bias_energies_full[:, cset]
         self.bias_energies = _np.require(self.bias_energies, dtype=_np.float64 ,requirements=['C', 'A'])
+        # correct state counts
+        self.state_counts = self.state_counts_full[:, cset]
+        self.state_counts = _np.require(self.state_counts, dtype=_np.intc ,requirements=['C', 'A'])
+
+        # run WHAM
+        if self.use_wham:
+            self.therm_energies, self.conf_energies, _err = _wham.estimate(
+                self.state_counts, self.bias_energies,
+                maxiter=1000, maxerr=1.0E-5,
+                therm_energies=self.therm_energies, conf_energies=self.conf_energies)
 
         # run estimator
-        self.therm_energies, self.conf_energies, self.log_lagrangian_mult, err, lll = _dtram.estimate(
+        self.therm_energies, self.conf_energies, self.log_lagrangian_mult, self.err, self.lll = _dtram.estimate(
             self.count_matrices, self.bias_energies,
             maxiter=self.maxiter, maxerr=self.maxerr,
             log_lagrangian_mult=self.log_lagrangian_mult,
@@ -107,7 +122,7 @@ class DTRAM(_Estimator, _MultiThermModel):
         # compute models
         fmsms = [_dtram.estimate_transition_matrix(
             self.log_lagrangian_mult, self.bias_energies, self.conf_energies,
-            self.count_matrices, K, _np.zeros(shape=self.conf_energies.shape, dtype=_np.float64)) for K in range(self.nthermo)]
+            self.count_matrices, _np.zeros(shape=self.conf_energies.shape, dtype=_np.float64), K) for K in range(self.nthermo)]
         self.model_active_set = [_largest_connected_set(msm, directed=False) for msm in fmsms]
         fmsms = [_np.ascontiguousarray(
             (msm[lcc, :])[:, lcc]) for msm, lcc in zip(fmsms, self.model_active_set)]
