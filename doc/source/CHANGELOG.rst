@@ -4,11 +4,25 @@ Changelog
 2.0.1 (to be released)
 ----------------------
 
-** New features**:
+**New features**:
 
 - coordinates: added Sparsifier, which detects constant features in data stream
   and removes them for further processing. 
+- coordinates: cache lengths of NumPy arrays
+- coordinates: clustering.interface new methods index_clusters and sample_indexes_by_cluster
+- coordinates: featurizer.add_contacts has new threshold value of .3 nm
+- coordinates: featurizer.pairs gets opt arg excluded_neighbors (default (=0) is unchanged)  
+- coordinates: featurizer.describe uses resSeq instead of residue.index
+- plots: network plots gets new arg state_labels, arg state_colors extended, textkwargs added
+- plots: timescale plot accepts different units for x,y axes 
+- logging: full-feature access to Python logging system (edit logging.yml in .pyemma dir) 
 
+**Fixes**:
+
+- Upon import no deprecation warning (about acf function) is shown.
+- coordinates: chunksize attribute moved to readers (no consequence for user-scripts)
+- coordinates: fixed bug in parallel evaluation of Estimators, when they have active loggers.
+- documentation fixes 
 
 2.0.1 (9-3-2015)
 ----------------
