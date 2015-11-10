@@ -61,16 +61,18 @@ class WHAM(_Estimator, _MultiThermModel):
         # validate input
         assert _types.is_list(trajs)
         for ttraj in trajs:
-            _types.assert_array(ttraj, ndim=2, kind='i')
+            _types.assert_array(ttraj, ndim=2, kind='numeric')
             assert _np.shape(ttraj)[1] == 2
 
         # harvest state counts
-        self.state_counts_full = _util.state_counts(trajs, nthermo=self.nthermo, nstates=self.nstates_full)
+        self.state_counts_full = _util.state_counts(
+            trajs, nthermo=self.nthermo, nstates=self.nstates_full)
 
         # active set
         # TODO: check for active thermodynamic set!
         self.active_set = _np.where(self.state_counts_full.sum(axis=0) > 0)[0]
-        self.state_counts = _np.ascontiguousarray(self.state_counts_full[:, self.active_set])
+        self.state_counts = _np.ascontiguousarray(
+            self.state_counts_full[:, self.active_set].astype(_np.intc))
         self.bias_energies = _np.ascontiguousarray(
             self.bias_energies_full[:, self.active_set], dtype=_np.float64)
 

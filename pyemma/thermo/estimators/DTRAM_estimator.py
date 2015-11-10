@@ -79,7 +79,7 @@ class DTRAM(_Estimator, _MultiThermModel):
         # validate input
         assert _types.is_list(trajs)
         for ttraj in trajs:
-            _types.assert_array(ttraj, ndim=2, kind='i')
+            _types.assert_array(ttraj, ndim=2, kind='numeric')
             assert _np.shape(ttraj)[1] >= 2 # TODO: check if == 2 is really necessary
 
         # count matrices (like in TRAM)
@@ -87,7 +87,8 @@ class DTRAM(_Estimator, _MultiThermModel):
             [_np.ascontiguousarray(t[:, :2]).astype(_np.intc) for t in trajs], self.lag,
             sliding=self.count_mode, sparse_return=False, nstates=self.nstates_full)
         # hasrvest state counts (for WHAM)
-        self.state_counts_full = _util.state_counts(trajs, nthermo=self.nthermo, nstates=self.nstates_full)
+        self.state_counts_full = _util.state_counts(
+            trajs, nthermo=self.nthermo, nstates=self.nstates_full)
 
         # restrict to connected set
         C_sum = self.count_matrices_full.sum(axis=0)
@@ -96,10 +97,12 @@ class DTRAM(_Estimator, _MultiThermModel):
         self.active_set = cset
         # correct counts
         self.count_matrices = self.count_matrices_full[:, cset[:, _np.newaxis], cset]
-        self.count_matrices = _np.require(self.count_matrices, dtype=_np.intc ,requirements=['C', 'A'])
+        self.count_matrices = _np.require(
+            self.count_matrices, dtype=_np.intc ,requirements=['C', 'A'])
         # correct bias matrix
         self.bias_energies = self.bias_energies_full[:, cset]
-        self.bias_energies = _np.require(self.bias_energies, dtype=_np.float64 ,requirements=['C', 'A'])
+        self.bias_energies = _np.require(
+            self.bias_energies, dtype=_np.float64 ,requirements=['C', 'A'])
         # correct state counts
         self.state_counts = self.state_counts_full[:, cset]
         self.state_counts = _np.require(self.state_counts, dtype=_np.intc ,requirements=['C', 'A'])
@@ -122,7 +125,8 @@ class DTRAM(_Estimator, _MultiThermModel):
         # compute models
         fmsms = [_dtram.estimate_transition_matrix(
             self.log_lagrangian_mult, self.bias_energies, self.conf_energies,
-            self.count_matrices, _np.zeros(shape=self.conf_energies.shape, dtype=_np.float64), K) for K in range(self.nthermo)]
+            self.count_matrices, _np.zeros(
+                shape=self.conf_energies.shape, dtype=_np.float64), K) for K in range(self.nthermo)]
         self.model_active_set = [_largest_connected_set(msm, directed=False) for msm in fmsms]
         fmsms = [_np.ascontiguousarray(
             (msm[lcc, :])[:, lcc]) for msm, lcc in zip(fmsms, self.model_active_set)]
