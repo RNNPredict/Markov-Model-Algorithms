@@ -108,6 +108,12 @@ class TRAM(_Estimator, _MultiThermModel):
 
         self.state_counts = state_counts
 
+        for k in range(state_counts.shape[0]):
+            if state_counts[k,:].sum() == 0:
+                warnings.warn('Thermodynamic state %d contains no samples after reducing to the connected set.'%k, EmptyState)
+            if self.count_matrices[k,:,:].sum() == 0:
+                warnings.warn('Thermodynamic state %d contains no transitions after reducing to the connected set.'%k, EmptyState)
+
         if self.initialization == 'MBAR' and self.biased_conf_energies is None:
             # initialize with MBAR
             def MBAR_printer(**kwargs):
@@ -160,12 +166,6 @@ class TRAM(_Estimator, _MultiThermModel):
 
             self.log_lagrangian_mult = dTRAM_result[2]
             self.biased_conf_energies = dTRAM_conf_energies + dTRAM_biases
-
-        for k in range(state_counts.shape[0]):
-            if state_counts[k,:].sum() == 0:
-                warnings.warn('Thermodynamic state %d contains no samples after reducing to the connected set.'%k, EmptyState)
-            if self.count_matrices[k,:,:].sum() == 0:
-                warnings.warn('Thermodynamic state %d contains no transitions after reducing to the connected set.'%k, EmptyState)
 
         # run estimator
         self.biased_conf_energies, conf_energies, therm_energies, self.log_lagrangian_mult = _tram_direct.estimate( #_direct
