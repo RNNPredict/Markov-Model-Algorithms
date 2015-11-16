@@ -67,6 +67,9 @@ class TRAM(_Estimator, _MultiThermModel):
         self.nthermo = int(max(_np.max(ttraj[:, 0]) for ttraj in trajs))+1
         #print 'M,T:', self.nstates_full, self.nthermo
 
+        for ttraj in trajs:
+            assert ttraj.shape[1] == self.nthermo+2
+
         # find state visits and dimensions
         self.state_counts_full = _util.state_counts(trajs)
         self.nstates_full = self.state_counts_full.shape[1]
@@ -136,7 +139,7 @@ class TRAM(_Estimator, _MultiThermModel):
             self.mbar_result  = _mbar_direct.estimate(state_counts.sum(axis=1), bias_energy_sequence,
                                                _np.ascontiguousarray(state_sequence[:, 1]),
                                                maxiter=100000, maxerr=1.0E-8, call_back=MBAR_printer)
-            therm_energies, _, mbar_biased_conf_energies = self.mbar_result
+            therm_energies, self.mbar_unbiased_conf_energies, mbar_biased_conf_energies = self.mbar_result
             self.biased_conf_energies = mbar_biased_conf_energies
             print 'therm energies:', therm_energies
 
