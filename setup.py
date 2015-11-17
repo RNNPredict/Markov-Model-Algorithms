@@ -229,12 +229,12 @@ metadata = dict(
     tests_require=['nose'],
     test_suite='nose.collector',
     # runtime dependencies
-    install_requires=['numpy>=1.6.0',
+    install_requires=['numpy>=1.7.0',
                       'scipy>=0.11',
-                      'mdtraj>=1.4.0',
+                      'mdtraj>=1.5.0',
                       'matplotlib',
                       'msmtools',
-                      'bhmm==0.5.1',
+                      'bhmm<0.6',
                       'joblib==0.8.4',
                       'pyyaml',
                       'psutil>=3.1.1',
@@ -255,8 +255,8 @@ if len(sys.argv) == 1 or (len(sys.argv) >= 2 and ('--help' in sys.argv[1:] or
     pass
 else:
     # setuptools>=2.2 can handle setup_requires
-    metadata['setup_requires'] = ['numpy>=1.6.0',
-                                  'mdtraj>=1.4.0',
+    metadata['setup_requires'] = ['numpy>=1.7.0',
+                                  'mdtraj>=1.5.0',
                                   'nose',
                                   ]
 
