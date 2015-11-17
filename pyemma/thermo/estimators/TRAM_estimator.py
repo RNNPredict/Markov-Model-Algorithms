@@ -139,8 +139,8 @@ class TRAM(_Estimator, _MultiThermModel):
             self.mbar_result  = _mbar_direct.estimate(state_counts.sum(axis=1), bias_energy_sequence,
                                                _np.ascontiguousarray(state_sequence[:, 1]),
                                                maxiter=100000, maxerr=1.0E-8, call_back=MBAR_printer)
-            therm_energies, self.mbar_unbiased_conf_energies, mbar_biased_conf_energies = self.mbar_result
-            self.biased_conf_energies = mbar_biased_conf_energies
+            therm_energies, self.mbar_unbiased_conf_energies, self.mbar_biased_conf_energies = self.mbar_result
+            self.biased_conf_energies = self.mbar_biased_conf_energies
             print 'therm energies:', therm_energies
 
             # adapt the Lagrange multiplers to this result
@@ -151,7 +151,7 @@ class TRAM(_Estimator, _MultiThermModel):
                 new_log_lagrangian_mult = log_lagrangian_mult.copy()
                 print 'initializing Lagrange multipliers'
                 for _m in range(1000):
-                        _tram.update_lagrangian_mult(log_lagrangian_mult, mbar_biased_conf_energies, self.count_matrices,
+                        _tram.update_lagrangian_mult(log_lagrangian_mult, self.mbar_biased_conf_energies, self.count_matrices,
                         state_counts, scratch_M, new_log_lagrangian_mult)
                         nz = _np.where(_np.logical_and(new_log_lagrangian_mult>-30,
                                                        log_lagrangian_mult>-30))
