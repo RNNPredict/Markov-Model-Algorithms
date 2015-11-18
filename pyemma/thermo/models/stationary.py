@@ -3,7 +3,7 @@ __author__ = 'noe'
 import numpy as _np
 from pyemma._base.model import Model as _Model
 from pyemma.util import types as _types
-from thermotools.lse import logsumexp as _logsumexp
+from thermotools.util import logsumexp as _logsumexp
 
 class StationaryModel(_Model):
 

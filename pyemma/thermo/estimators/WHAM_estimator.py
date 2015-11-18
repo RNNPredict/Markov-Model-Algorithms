@@ -33,13 +33,14 @@ class WHAM(_Estimator, _MultiThermModel):
     """
     def __init__(
         self, bias_energies_full,
-        stride=1, dt_traj='1 step', maxiter=100000, maxerr=1e-5, err_out=0):
+        stride=1, dt_traj='1 step', maxiter=100000, maxerr=1e-5, err_out=0, lll_out=0):
         self.bias_energies_full = _types.ensure_ndarray(bias_energies_full, ndim=2, kind='numeric')
         self.stride = stride
         self.dt_traj = dt_traj
         self.maxiter = maxiter
         self.maxerr = maxerr
         self.err_out = err_out
+        self.lll_out = lll_out
         # set derived quantities
         self.nthermo, self.nstates_full = bias_energies_full.shape
         # set iteration variables
@@ -78,11 +79,11 @@ class WHAM(_Estimator, _MultiThermModel):
 
         # run estimator
         # TODO: give convergence feedback!
-        self.therm_energies, self.conf_energies, self.err = _wham.estimate(
+        self.therm_energies, self.conf_energies, self.err, self.lll = _wham.estimate(
             self.state_counts, self.bias_energies,
             maxiter=self.maxiter, maxerr=self.maxerr,
             therm_energies=self.therm_energies, conf_energies=self.conf_energies,
-            err_out=self.err_out)
+            err_out=self.err_out, lll_out=self.lll_out)
 
         # get stationary models
         sms = [_StationaryModel(
