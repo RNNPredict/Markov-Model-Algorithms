@@ -109,18 +109,19 @@ class DTRAM(_Estimator, _MultiThermModel):
 
         # run WHAM
         if self.use_wham:
-            self.therm_energies, self.conf_energies, _err = _wham.estimate(
+            self.therm_energies, self.conf_energies, _err, _lll = _wham.estimate(
                 self.state_counts, self.bias_energies,
                 maxiter=1000, maxerr=1.0E-5,
                 therm_energies=self.therm_energies, conf_energies=self.conf_energies)
 
         # run estimator
-        self.therm_energies, self.conf_energies, self.log_lagrangian_mult, self.err, self.lll = _dtram.estimate(
-            self.count_matrices, self.bias_energies,
-            maxiter=self.maxiter, maxerr=self.maxerr,
-            log_lagrangian_mult=self.log_lagrangian_mult,
-            conf_energies=self.conf_energies,
-            err_out=self.err_out, lll_out=self.lll_out)
+        self.therm_energies, self.conf_energies, self.log_lagrangian_mult, self.err, self.lll \
+            = _dtram.estimate(
+                self.count_matrices, self.bias_energies,
+                maxiter=self.maxiter, maxerr=self.maxerr,
+                log_lagrangian_mult=self.log_lagrangian_mult,
+                conf_energies=self.conf_energies,
+                err_out=self.err_out, lll_out=self.lll_out)
 
         # compute models
         fmsms = [_dtram.estimate_transition_matrix(
