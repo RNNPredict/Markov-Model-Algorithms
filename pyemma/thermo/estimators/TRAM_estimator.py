@@ -21,11 +21,11 @@ except ImportError:
 try:
     from thermotools import mbar_direct as _mbar_direct
 except ImportError:
-    warning.warn('Direct space implementation of MBAR couldn\'t be imported. TRAM(..., initialization = \'MBAR\', direct_space=True) won\'t work.',  ImportWarning)
+    warnings.warn('Direct space implementation of MBAR couldn\'t be imported. TRAM(..., initialization = \'MBAR\', direct_space=True) won\'t work.',  ImportWarning)
 try:
     from thermotools import tram_direct as _tram_direct
 except ImportError:
-    warning.warn('Direct space implementation of TRAM couldn\'t be imported. TRAM(..., direct_space=True) won\'t work.',  ImportWarning)
+    warnings.warn('Direct space implementation of TRAM couldn\'t be imported. TRAM(..., direct_space=True) won\'t work.',  ImportWarning)
 
 class EmptyState(RuntimeWarning):
     pass
