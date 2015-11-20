@@ -32,9 +32,9 @@ class EmptyState(RuntimeWarning):
 
 class TRAM(_Estimator, _MultiThermModel):
     def __init__(self, lag=1, ground_state=None, count_mode='sliding',
-                 dt_traj='1 step', maxiter=1000, maxerr=1e-5, call_back=None,
-                 optimize_lagrangian_mult=False, N_dtram_accelerations=0,
-                 dTRAM_mode=False, strict=False, direct_space=False,
+                 dt_traj='1 step', maxiter=1000, maxerr=1e-5, callback=None,
+                 N_dtram_accelerations=0,
+                 dTRAM_mode=False, direct_space=False,
                  initialization='MBAR', err_out=0, lll_out=0
                  ):
         self.lag = lag
@@ -48,13 +48,11 @@ class TRAM(_Estimator, _MultiThermModel):
         # set iteration variables
         self.biased_conf_energies = None
         self.log_lagrangian_mult = None
-        self.call_back = call_back
+        self.call_back = callback
         self._direct_space = direct_space
         self.initialization = initialization
-        self.optimize_lagrangian_mult = optimize_lagrangian_mult
         self.N_dtram_accelerations = N_dtram_accelerations
         self._dTRAM_mode = dTRAM_mode
-        self._strict = strict
         self.err_out = err_out
         self.lll_out = lll_out
 
@@ -96,17 +94,8 @@ class TRAM(_Estimator, _MultiThermModel):
         # restrict to connected set
         C_sum = self.count_matrices_full.sum(axis=0)
         # TODO: report fraction of lost counts
-        if not self._strict:
-            cset = _largest_connected_set(C_sum, directed=True)
-        else:
-            cset_global = _np.array([],dtype=int)
-            for k in range(self.nthermo):
-                cset_k = _largest_connected_set(self.count_matrices_full[k,:,:])
-                cset_global = _np.union1d(cset_k, cset_global)
-            C_conn_strict =  self.count_matrices_full[:, cset_global[:, _np.newaxis], cset_global]
-            C_strict_sum = C_conn_strict.sum(axis=0)    
-            cset_strict = _largest_connected_set(C_strict_sum)
-            cset = cset_global[cset_strict]
+
+        cset = _largest_connected_set(C_sum, directed=True)
         self.active_set = cset
         # correct counts
         self.count_matrices = self.count_matrices_full[:, cset[:, _np.newaxis], cset]
@@ -155,47 +144,6 @@ class TRAM(_Estimator, _MultiThermModel):
             therm_energies, self.mbar_unbiased_conf_energies, self.mbar_biased_conf_energies, mbar_error_history = self.mbar_result
             self.biased_conf_energies = self.mbar_biased_conf_energies
 
-            # adapt the Lagrange multiplers to this result
-            if self.optimize_lagrangian_mult:
-                log_lagrangian_mult = _np.zeros(shape=state_counts.shape, dtype=_np.float64)
-                scratch_M = _np.zeros(shape=state_counts.shape[1], dtype=_np.float64)
-                _tram.init_lagrangian_mult(self.count_matrices, log_lagrangian_mult)
-                new_log_lagrangian_mult = log_lagrangian_mult.copy()
-                print 'initializing Lagrange multipliers'
-                for _m in range(1000):
-                        _tram.update_lagrangian_mult(log_lagrangian_mult, self.mbar_biased_conf_energies, self.count_matrices,
-                        state_counts, scratch_M, new_log_lagrangian_mult)
-                        nz = _np.where(_np.logical_and(new_log_lagrangian_mult>-30,
-                                                       log_lagrangian_mult>-30))
-                        if _np.max(_np.abs(new_log_lagrangian_mult[nz] - log_lagrangian_mult[nz])) < self.maxerr:
-                            break
-                        log_lagrangian_mult[:] = new_log_lagrangian_mult
-                self.log_lagrangian_mult = new_log_lagrangian_mult
-                print 'done'
-
-        elif self.initialization == 'dTRAM' and self.biased_conf_energies is None:
-            occupied = _np.where(state_counts>0)
-            def preTRAM_printer(**kwargs):
-                if kwargs['iteration'] % 100 == 0:
-                     error = _np.max(_np.abs(kwargs['biased_conf_energies'][occupied]-kwargs['old_biased_conf_energies'][occupied]))
-                     shape = kwargs['old_biased_conf_energies'].shape
-                     argmax = _np.argmax(_np.abs(kwargs['biased_conf_energies']-kwargs['old_biased_conf_energies']))
-                     print 'preTRAM', kwargs['iteration'], error, _np.unravel_index(argmax, shape)#, occupied[argmax]
-            preTRAM_result = _tram_direct.estimate(_np.zeros_like(self.count_matrices), state_counts, bias_energy_sequence,
-                                        _np.ascontiguousarray(state_sequence[:, 1]), maxiter=100000, maxerr=1.E-8, call_back=preTRAM_printer)
-            preTRAM_biased_conf_energies = preTRAM_result[0]
-
-            def dTRAM_printer(**kwargs):
-                if kwargs['iteration'] % 100 == 0:
-                    error = _np.max(_np.abs(kwargs['conf_energies']-kwargs['old_conf_energies']))
-                    print 'dTRAM', kwargs['iteration'], error
-            dTRAM_biases = preTRAM_biased_conf_energies
-            dTRAM_result = _dtram.estimate(self.count_matrices, dTRAM_biases, maxiter=1000000, maxerr=1.E-8, call_back=dTRAM_printer)
-            dTRAM_conf_energies = dTRAM_result[1]
-
-            self.log_lagrangian_mult = dTRAM_result[2]
-            self.biased_conf_energies = dTRAM_conf_energies + dTRAM_biases
-
         # run estimator
         if self._dTRAM_mode:
             # use dTRAM (initialized with MBAR) instead of TRAM
@@ -227,7 +175,8 @@ class TRAM(_Estimator, _MultiThermModel):
                 biased_conf_energies = self.biased_conf_energies,
                 err_out = self.err_out,
                 lll_out = self.lll_out,
-                callback = self.call_back)
+                callback = self.call_back,
+                N_dtram_accelerations = self.N_dtram_accelerations)
 
         # compute models
         fmsms = [_tram.estimate_transition_matrix(
