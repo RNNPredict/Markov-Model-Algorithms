@@ -9,22 +9,34 @@ from pyemma.util import types as _types
 from msmtools.estimation import largest_connected_set as _largest_connected_set
 import warnings
 import sys
+
 try:
     from thermotools import tram as _tram
-    from thermotools import tram_direct as _tram_direct
-    from thermotools import mbar_direct as _mbar_direct
     from thermotools import mbar as _mbar
     from thermotools import dtram as _dtram
     from thermotools import util as _util
 except ImportError:
     pass
 
+try:
+    from thermotools import mbar_direct as _mbar_direct
+except ImportError:
+    warning.warn('Direct space implementation of MBAR couldn\'t be imported. TRAM(..., initialization = \'MBAR\', direct_space=True) won\'t work.',  ImportWarning)
+try:
+    from thermotools import tram_direct as _tram_direct
+except ImportError:
+    warning.warn('Direct space implementation of TRAM couldn\'t be imported. TRAM(..., direct_space=True) won\'t work.',  ImportWarning)
+
 class EmptyState(RuntimeWarning):
     pass
 
 class TRAM(_Estimator, _MultiThermModel):
     def __init__(self, lag=1, ground_state=None, count_mode='sliding',
-                 dt_traj='1 step', maxiter=1000, maxerr=1e-5, call_back=None, optimize_lagrangian_mult=False, N_dtram_accelerations=0, dTRAM_mode=False, strict=False, direct_space=True):
+                 dt_traj='1 step', maxiter=1000, maxerr=1e-5, call_back=None,
+                 optimize_lagrangian_mult=False, N_dtram_accelerations=0,
+                 dTRAM_mode=False, strict=False, direct_space=False,
+                 initialization='MBAR', err_out=0, lll_out=0
+                 ):
         self.lag = lag
         self.ground_state = ground_state
         self.count_mode = count_mode
@@ -38,11 +50,13 @@ class TRAM(_Estimator, _MultiThermModel):
         self.log_lagrangian_mult = None
         self.call_back = call_back
         self._direct_space = direct_space
-        self.initialization = 'MBAR'
+        self.initialization = initialization
         self.optimize_lagrangian_mult = optimize_lagrangian_mult
         self.N_dtram_accelerations = N_dtram_accelerations
         self._dTRAM_mode = dTRAM_mode
         self._strict = strict
+        self.err_out = err_out
+        self.lll_out = lll_out
 
     def _estimate(self, trajs):
         """
@@ -65,7 +79,6 @@ class TRAM(_Estimator, _MultiThermModel):
         # find dimensions
         self.nstates_full = int(max(_np.max(ttraj[:, 1]) for ttraj in trajs))+1
         self.nthermo = int(max(_np.max(ttraj[:, 0]) for ttraj in trajs))+1
-        #print 'M,T:', self.nstates_full, self.nthermo
 
         for ttraj in trajs:
             assert ttraj.shape[1] == self.nthermo+2
@@ -135,13 +148,12 @@ class TRAM(_Estimator, _MultiThermModel):
             # initialize with MBAR
             def MBAR_printer(**kwargs):
                 if kwargs['iteration'] % 100 == 0:
-                     print 'preMBAR', kwargs['iteration'], kwargs['error']
+                     print 'preMBAR', kwargs['iteration_step'], kwargs['error']
             self.mbar_result  = _mbar_direct.estimate(state_counts.sum(axis=1), bias_energy_sequence,
                                                _np.ascontiguousarray(state_sequence[:, 1]),
-                                               maxiter=100000, maxerr=1.0E-8, call_back=MBAR_printer)
-            therm_energies, self.mbar_unbiased_conf_energies, self.mbar_biased_conf_energies = self.mbar_result
+                                               maxiter=100000, maxerr=1.0E-8)
+            therm_energies, self.mbar_unbiased_conf_energies, self.mbar_biased_conf_energies, mbar_error_history = self.mbar_result
             self.biased_conf_energies = self.mbar_biased_conf_energies
-            print 'therm energies:', therm_energies
 
             # adapt the Lagrange multiplers to this result
             if self.optimize_lagrangian_mult:
@@ -195,7 +207,6 @@ class TRAM(_Estimator, _MultiThermModel):
                 if self.call_back is not None:
                     kwargs['biased_conf_energies'] = kwargs['conf_energies'] + dTRAM_biases
                     kwargs['old_biased_conf_energies'] = kwargs['old_conf_energies'] + dTRAM_biases
-                    kwargs['log_likelihood'] = 0.0
                     self.call_back(**kwargs)
 
             dTRAM_result = _dtram.estimate(self.count_matrices, dTRAM_biases, maxiter=1000000, maxerr=1.E-8, call_back=dTRAM_translator)
@@ -209,13 +220,14 @@ class TRAM(_Estimator, _MultiThermModel):
                 tram = _tram_direct
             else:
                 tram = _tram
-            self.biased_conf_energies, conf_energies, therm_energies, self.log_lagrangian_mult = tram.estimate(
+            self.biased_conf_energies, conf_energies, therm_energies, self.log_lagrangian_mult, self.error_history, self.logL_history = tram.estimate(
                 self.count_matrices, state_counts, bias_energy_sequence, _np.ascontiguousarray(state_sequence[:, 1]),
-                maxiter=self.maxiter, maxerr=self.maxerr,
-                log_lagrangian_mult=self.log_lagrangian_mult,
-                biased_conf_energies=self.biased_conf_energies,
-                call_back=self.call_back,
-                N_dtram_accelerations=self.N_dtram_accelerations)
+                maxiter = self.maxiter, maxerr = self.maxerr,
+                log_lagrangian_mult = self.log_lagrangian_mult,
+                biased_conf_energies = self.biased_conf_energies,
+                err_out = self.err_out,
+                lll_out = self.lll_out,
+                callback = self.call_back)
 
         # compute models
         fmsms = [_tram.estimate_transition_matrix(
@@ -232,6 +244,7 @@ class TRAM(_Estimator, _MultiThermModel):
         return self
 
     def log_likelihood(self):
-        raise Exception('not implemented')
-        #return (self.state_counts * (
-        #    self.f_therm[:, _np.newaxis] - self.b_K_i - self.f[_np.newaxis, :])).sum()
+        if self.logL_history is None:
+            raise Exception('Computation of log likelihood wasn\'t enabled during estimation.')
+        else:
+            return self.logL_history[-1]
