@@ -105,7 +105,9 @@ class TRAM(_Estimator, _MultiThermModel):
         # create flat bias energy arrays
         state_sequence_full = None
         bias_energy_sequence_full = None
+        self.dtrajs_full = []
         for traj in trajs:
+            self.dtrajs_full.append(traj[:, 1])
             if state_sequence_full is None and bias_energy_sequence_full is None:
                 state_sequence_full = traj[:, :2]
                 bias_energy_sequence_full = traj[:, 2:]
@@ -136,7 +138,7 @@ class TRAM(_Estimator, _MultiThermModel):
         if self.initialization == 'MBAR' and self.biased_conf_energies is None:
             # initialize with MBAR
             def MBAR_printer(**kwargs):
-                if kwargs['iteration'] % 100 == 0:
+                if kwargs['iteration_step'] % 100 == 0:
                      print 'preMBAR', kwargs['iteration_step'], kwargs['error']
             self.mbar_result  = _mbar_direct.estimate(state_counts.sum(axis=1), bias_energy_sequence,
                                                _np.ascontiguousarray(state_sequence[:, 1]),
@@ -145,7 +147,7 @@ class TRAM(_Estimator, _MultiThermModel):
             self.biased_conf_energies = self.mbar_biased_conf_energies
 
         # run estimator
-        if self._dTRAM_mode:
+        if self._dTRAM_mode: # TODO: remove dTRAM mode
             # use dTRAM (initialized with MBAR) instead of TRAM
             assert self.biased_conf_energies is not None
             print 'Hello dTRAM.'
@@ -169,7 +171,7 @@ class TRAM(_Estimator, _MultiThermModel):
             else:
                 tram = _tram
             self.biased_conf_energies, conf_energies, therm_energies, self.log_lagrangian_mult, self.error_history, self.logL_history = tram.estimate(
-                self.count_matrices, state_counts, bias_energy_sequence, _np.ascontiguousarray(state_sequence[:, 1]),
+                self.count_matrices, self.state_counts, bias_energy_sequence, _np.ascontiguousarray(state_sequence[:, 1]),
                 maxiter = self.maxiter, maxerr = self.maxerr,
                 log_lagrangian_mult = self.log_lagrangian_mult,
                 biased_conf_energies = self.biased_conf_energies,
@@ -177,6 +179,20 @@ class TRAM(_Estimator, _MultiThermModel):
                 lll_out = self.lll_out,
                 callback = self.call_back,
                 N_dtram_accelerations = self.N_dtram_accelerations)
+
+        # compute and store "mu". TODO: think about storing this directly to a file...
+        self.unbiased_pointwise_free_energies = _np.zeros(bias_energy_sequence.shape[1], dtype=_np.float64)
+        _tram.get_unbiased_pointwise_free_energies(
+            self.log_lagrangian_mult,
+            self.biased_conf_energies,
+            self.count_matrices,
+            bias_energy_sequence,
+            _np.ascontiguousarray(state_sequence[:, 1]),
+            self.state_counts,
+            conf_energies,
+            None,    
+            None,
+            self.unbiased_pointwise_free_energies)
 
         # compute models
         fmsms = [_tram.estimate_transition_matrix(
@@ -197,3 +213,36 @@ class TRAM(_Estimator, _MultiThermModel):
             raise Exception('Computation of log likelihood wasn\'t enabled during estimation.')
         else:
             return self.logL_history[-1]
+            
+    def pmf(self, x, y, bins):
+        # reduce everything to the connected set
+        assert len(x)==len(y)==len(self.drajs_full)
+        x_sequence = []
+        y_sequence = []
+        for xtraj, ytraj, traj in zip(x,y,self.drajs_full):
+            assert len(xtraj)==len(ytraj)==len(dtraj)
+            # TODO: make _util.restrict_samples_to_cset flexible enough to replace the following:
+            valid = _np.in1d(dtraj, self.active_set) 
+            x_sequence.append(xtraj[valid])
+            y_sequence.append(ytraj[valid])
+        x_sequence = _np.concatenate(x_sequence)
+        y_sequence = _np.concatenate(y_sequence)
+        
+        # digitize x and y
+        x_dsequence = _np.digitize(x_sequence, bins)
+        y_dsequence = _np.digitize(y_sequence, bins)
+        n = len(bins)+1
+        del x_sequence
+        del y_sequence
+        # generate product indices
+        user_index_sequence = y_dsequence * n + x_dsequence
+        del x_dsequence
+        del y_dsequence
+
+        the_pmf = _np.zeros(shape=n*n, dtype=_np.float64)
+        tram.get_unbiased_user_free_energies(
+            self.unbiased_pointwise_free_energies,
+            user_index_sequence,
+            the_pmf)
+
+        return the_pmf.reshape((n,n)), bins, bins # TODO: allow different shapes in x and y
