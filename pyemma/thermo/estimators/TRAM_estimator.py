@@ -192,6 +192,23 @@ class TRAM(_Estimator, _MultiThermModel):
             None,
             None,
             self.unbiased_pointwise_free_energies)
+        # reindex mu such that its index corresponds to the indiced of the
+        # dtrajs given by the user (on the full set) and give all sampled
+        # whose Markov state is not in the connected set a weight of 0.
+        mu = self.unbiased_pointwise_free_energies
+        mu_reindex = _np.ones(shape=sum(traj.shape[0] for traj in trajs), dtype=_np.float64)*_np.inf
+        i = 0
+        j = 0
+        for traj in trajs:
+            size = traj.shape[0]
+            valid = _np.in1d(traj[:,1], cset)
+            valid_size = _np.count_nonzero(valid)
+            mu_reindex[i:i+size][valid] = mu[j:j+valid_size]
+            i+= size
+            j+= valid_size
+        assert i==mu.shape[0]
+        assert j==mu_reindex.shape[0]
+        self.unbiased_pointwise_free_energies_reindex = mu_reindex # TODO: drop "reindex"
 
         # compute models
         fmsms = [_tram.estimate_transition_matrix(
@@ -216,35 +233,19 @@ class TRAM(_Estimator, _MultiThermModel):
     def pmf(self, x, y, bins, ybins=None):
         if ybins is None:
             ybins = bins
-        # reduce everything to the connected set
-        assert len(x)==len(y)==len(self.drajs_full)
-        x_sequence = []
-        y_sequence = []
-        for xtraj, ytraj, traj in zip(x,y,self.drajs_full):
-            assert len(xtraj)==len(ytraj)==len(dtraj)
-            # TODO: make _util.restrict_samples_to_cset flexible enough to replace the following:
-            valid = _np.in1d(dtraj, self.active_set) 
-            x_sequence.append(xtraj[valid])
-            y_sequence.append(ytraj[valid])
-        x_sequence = _np.concatenate(x_sequence)
-        y_sequence = _np.concatenate(y_sequence)
-
-        # digitize x and y
-        i_sequence = _np.digitize(x_sequence, bins)
-        j_sequence = _np.digitize(y_sequence, ybins)
         n = len(bins)+1
         m = len(ybins)+1
-        del x_sequence
-        del y_sequence
+        # TODO: check type of x and y!
+        assert len(x)==len(y)
+        # digitize x and y
+        i_sequence = _np.digitize(_np.concatenate(x), bins)
+        j_sequence = _np.digitize(_np.concatenate(y), ybins)
         # generate product indices
         user_index_sequence = i_sequence * m + j_sequence
-        del i_sequence
-        del j_sequence
-
         the_pmf = _np.zeros(shape=n*m, dtype=_np.float64)
-        tram.get_unbiased_user_free_energies(
+        _tram.get_unbiased_user_free_energies(
             self.unbiased_pointwise_free_energies,
-            user_index_sequence,
+            user_index_sequence.astype(_np.intc),
             the_pmf)
 
         return the_pmf.reshape((n,m)), bins, ybins
