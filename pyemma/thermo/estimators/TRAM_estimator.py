@@ -189,8 +189,7 @@ class TRAM(_Estimator, _MultiThermModel):
             bias_energy_sequence,
             _np.ascontiguousarray(state_sequence[:, 1]),
             self.state_counts,
-            conf_energies,
-            None,    
+            None,
             None,
             self.unbiased_pointwise_free_energies)
 
@@ -213,8 +212,10 @@ class TRAM(_Estimator, _MultiThermModel):
             raise Exception('Computation of log likelihood wasn\'t enabled during estimation.')
         else:
             return self.logL_history[-1]
-            
-    def pmf(self, x, y, bins):
+
+    def pmf(self, x, y, bins, ybins=None):
+        if ybins is None:
+            ybins = bins
         # reduce everything to the connected set
         assert len(x)==len(y)==len(self.drajs_full)
         x_sequence = []
@@ -227,22 +228,30 @@ class TRAM(_Estimator, _MultiThermModel):
             y_sequence.append(ytraj[valid])
         x_sequence = _np.concatenate(x_sequence)
         y_sequence = _np.concatenate(y_sequence)
-        
+
         # digitize x and y
-        x_dsequence = _np.digitize(x_sequence, bins)
-        y_dsequence = _np.digitize(y_sequence, bins)
+        i_sequence = _np.digitize(x_sequence, bins)
+        j_sequence = _np.digitize(y_sequence, ybins)
         n = len(bins)+1
+        m = len(ybins)+1
         del x_sequence
         del y_sequence
         # generate product indices
-        user_index_sequence = y_dsequence * n + x_dsequence
-        del x_dsequence
-        del y_dsequence
+        user_index_sequence = i_sequence * m + j_sequence
+        del i_sequence
+        del j_sequence
 
-        the_pmf = _np.zeros(shape=n*n, dtype=_np.float64)
+        the_pmf = _np.zeros(shape=n*m, dtype=_np.float64)
         tram.get_unbiased_user_free_energies(
             self.unbiased_pointwise_free_energies,
             user_index_sequence,
             the_pmf)
 
-        return the_pmf.reshape((n,n)), bins, bins # TODO: allow different shapes in x and y
+        return the_pmf.reshape((n,m)), bins, ybins
+
+    def expectation(self, observables_trajs):
+        # TODO: compute per cluster expectations and the global expectation
+        # returns (vector of per cluster expectations, global expectation)
+        # To to the "per cluster" part, we have to use the conf_state_sequence.
+        # Should this be stored in the TRAM object instead of drajs_full?
+        pass
