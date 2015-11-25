@@ -192,22 +192,22 @@ class TRAM(_Estimator, _MultiThermModel):
             None,
             None,
             self.unbiased_pointwise_free_energies)
-        # reindex mu such that its index corresponds to the indiced of the
-        # dtrajs given by the user (on the full set) and give all sampled
+        # Reindex mu such that its indices corresponds to the indices of the
+        # dtrajs given by the user (on the full set). Give all samples
         # whose Markov state is not in the connected set a weight of 0.
         mu = self.unbiased_pointwise_free_energies
         mu_reindex = _np.ones(shape=sum(traj.shape[0] for traj in trajs), dtype=_np.float64)*_np.inf
         i = 0
         j = 0
         for traj in trajs:
-            size = traj.shape[0]
+            full_size = traj.shape[0]
             valid = _np.in1d(traj[:,1], cset)
-            valid_size = _np.count_nonzero(valid)
-            mu_reindex[i:i+size][valid] = mu[j:j+valid_size]
-            i+= size
-            j+= valid_size
-        assert i==mu.shape[0]
-        assert j==mu_reindex.shape[0]
+            restricted_size = _np.count_nonzero(valid)
+            mu_reindex[i:i+full_size][valid] = mu[j:j+restricted_size]
+            i+= full_size
+            j+= restricted_size
+        assert i==mu_reindex.shape[0]
+        assert j==mu.shape[0]
         self.unbiased_pointwise_free_energies_reindex = mu_reindex # TODO: drop "reindex"
 
         # compute models
@@ -230,7 +230,8 @@ class TRAM(_Estimator, _MultiThermModel):
         else:
             return self.logL_history[-1]
 
-    def pmf(self, x, y, bins, ybins=None):
+    @classmethod
+    def pmf(pointwise_free_energies, x, y, bins, ybins=None):
         if ybins is None:
             ybins = bins
         n = len(bins)+1
@@ -244,7 +245,7 @@ class TRAM(_Estimator, _MultiThermModel):
         user_index_sequence = i_sequence * m + j_sequence
         the_pmf = _np.zeros(shape=n*m, dtype=_np.float64)
         _tram.get_unbiased_user_free_energies(
-            self.unbiased_pointwise_free_energies,
+            pointwise_free_energies,
             user_index_sequence.astype(_np.intc),
             the_pmf)
 
