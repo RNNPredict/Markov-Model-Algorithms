@@ -105,9 +105,7 @@ class TRAM(_Estimator, _MultiThermModel):
         # create flat bias energy arrays
         state_sequence_full = None
         bias_energy_sequence_full = None
-        self.dtrajs_full = []
         for traj in trajs:
-            self.dtrajs_full.append(traj[:, 1])
             if state_sequence_full is None and bias_energy_sequence_full is None:
                 state_sequence_full = traj[:, :2]
                 bias_energy_sequence_full = traj[:, 2:]
@@ -127,7 +125,11 @@ class TRAM(_Estimator, _MultiThermModel):
         assert _np.all(_np.bincount(state_sequence[:, 0]) == state_counts.sum(axis=1))
         assert _np.all(state_counts >= _np.maximum(self.count_matrices.sum(axis=1), self.count_matrices.sum(axis=2)))
 
+        # store intermediate resuts (in the instance)
         self.state_counts = state_counts
+        self.bias_energy_sequence = bias_energy_sequence
+        self.state_sequence = state_sequence
+        self.trajs = trajs
 
         for k in range(state_counts.shape[0]):
             if state_counts[k,:].sum() == 0:
@@ -139,11 +141,11 @@ class TRAM(_Estimator, _MultiThermModel):
             # initialize with MBAR
             def MBAR_printer(**kwargs):
                 if kwargs['iteration_step'] % 100 == 0:
-                     print 'preMBAR', kwargs['iteration_step'], kwargs['error']
-            self.mbar_result  = _mbar_direct.estimate(state_counts.sum(axis=1), bias_energy_sequence,
-                                               _np.ascontiguousarray(state_sequence[:, 1]),
-                                               maxiter=100000, maxerr=1.0E-8)
-            therm_energies, self.mbar_unbiased_conf_energies, self.mbar_biased_conf_energies, mbar_error_history = self.mbar_result
+                     print 'preMBAR', kwargs['iteration_step'], kwargs['err']
+            mbar_result  = _mbar_direct.estimate(state_counts.sum(axis=1), bias_energy_sequence,
+                                                 _np.ascontiguousarray(state_sequence[:, 1]),
+                                                 maxiter=100000, maxerr=1.0E-8, callback=MBAR_printer)
+            self.mbar_therm_energies, self.mbar_unbiased_conf_energies, self.mbar_biased_conf_energies, mbar_error_history = mbar_result
             self.biased_conf_energies = self.mbar_biased_conf_energies
 
         # run estimator
@@ -180,36 +182,6 @@ class TRAM(_Estimator, _MultiThermModel):
                 callback = self.call_back,
                 N_dtram_accelerations = self.N_dtram_accelerations)
 
-        # compute and store "mu". TODO: think about storing this directly to a file...
-        self.unbiased_pointwise_free_energies = _np.zeros(bias_energy_sequence.shape[1], dtype=_np.float64)
-        _tram.get_unbiased_pointwise_free_energies(
-            self.log_lagrangian_mult,
-            self.biased_conf_energies,
-            self.count_matrices,
-            bias_energy_sequence,
-            _np.ascontiguousarray(state_sequence[:, 1]),
-            self.state_counts,
-            None,
-            None,
-            self.unbiased_pointwise_free_energies)
-        # Reindex mu such that its indices corresponds to the indices of the
-        # dtrajs given by the user (on the full set). Give all samples
-        # whose Markov state is not in the connected set a weight of 0.
-        mu = self.unbiased_pointwise_free_energies
-        mu_reindex = _np.ones(shape=sum(traj.shape[0] for traj in trajs), dtype=_np.float64)*_np.inf
-        i = 0
-        j = 0
-        for traj in trajs:
-            full_size = traj.shape[0]
-            valid = _np.in1d(traj[:,1], cset)
-            restricted_size = _np.count_nonzero(valid)
-            mu_reindex[i:i+full_size][valid] = mu[j:j+restricted_size]
-            i+= full_size
-            j+= restricted_size
-        assert i==mu_reindex.shape[0]
-        assert j==mu.shape[0]
-        self.unbiased_pointwise_free_energies_reindex = mu_reindex # TODO: drop "reindex"
-
         # compute models
         fmsms = [_tram.estimate_transition_matrix(
             self.log_lagrangian_mult, self.biased_conf_energies,
@@ -230,14 +202,76 @@ class TRAM(_Estimator, _MultiThermModel):
         else:
             return self.logL_history[-1]
 
-    @classmethod
-    def pmf(pointwise_free_energies, x, y, bins, ybins=None):
+    def pointwise_unbiased_free_energies(self, therm_state=None):
+        if therm_state is not None:
+            raise Exception('Choice of therm_state not implemented yet.')
+        mu_cset = _np.zeros(self.bias_energy_sequence.shape[1], dtype=_np.float64)
+        _tram.get_pointwise_unbiased_free_energies(
+            self.log_lagrangian_mult, self.biased_conf_energies,
+            self.count_matrices, self.bias_energy_sequence,
+            _np.ascontiguousarray(self.state_sequence[:, 1]), self.state_counts,
+            None, None, mu_cset)
+        # Reindex mu such that its indices corresponds to the indices of the
+        # dtrajs given by the user (on the full set). Give all samples
+        # whose Markov state is not in the connected set a weight of 0.
+        j = 0
+        mu_trajs = []
+        for traj in self.trajs:
+            full_size = traj.shape[0]
+            valid = _np.in1d(traj[:,1], self.active_set)
+            restricted_size = _np.count_nonzero(valid)
+            mu_traj = _np.ones(shape=full_size, dtype=_np.float64)*_np.inf
+            mu_traj[valid] = mu_cset[j:j+restricted_size]
+            mu_trajs.append(mu_traj)
+            j+= restricted_size
+        assert j==mu_cset.shape[0]
+        return mu_trajs
+
+    def mbar_pointwise_unbiased_free_energies(self, therm_state=None):
+        if therm_state is not None:
+            raise Exception('Choice of therm_state not implemented yet.')
+        mu_cset = _np.zeros(self.bias_energy_sequence.shape[1], dtype=_np.float64)
+        _mbar.get_pointwise_unbiased_free_energies(
+            _np.log(self.state_counts.sum(axis=1)), self.bias_energy_sequence,
+            self.mbar_therm_energies, None, mu_cset)
+        j = 0
+        mu_trajs = []
+        for traj in self.trajs:
+            full_size = traj.shape[0]
+            valid = _np.in1d(traj[:,1], self.active_set)
+            restricted_size = _np.count_nonzero(valid)
+            mu_traj = _np.ones(shape=full_size, dtype=_np.float64)*_np.inf
+            mu_traj[valid] = mu_cset[j:j+restricted_size]
+            mu_trajs.append(mu_traj)
+            j+= restricted_size
+        assert j==mu_cset.shape[0]
+        return mu_trajs
+
+    # TODO: this is general enough to be used for MBAR as well, move it
+    @staticmethod
+    def pmf(pointwise_free_energy_trajs, x, y, bins, ybins=None):
+        # format input if needed
+        if isinstance(pointwise_free_energy_trajs, _np.ndarray):
+            pointwise_free_energy_trajs = [pointwise_free_energy_trajs]
+        if isinstance(x, _np.ndarray):
+            x = [x]
+        if isinstance(y, _np.ndarray):
+            y = [y]
+        # validate input
+        assert _types.is_list(pointwise_free_energy_trajs)
+        assert _types.is_list(x)
+        assert _types.is_list(y)
+        assert len(pointwise_free_energy_trajs)==len(x)==len(y)
+        for xtraj, ytraj, etraj in zip(pointwise_free_energy_trajs, x, y):
+            _types.assert_array(xtraj, ndim=1, kind='f')
+            _types.assert_array(ytraj, ndim=1, kind='f')
+            _types.assert_array(etraj, ndim=1, kind='f')
+            assert len(xtraj)==len(ytraj)==len(etraj)
+
         if ybins is None:
             ybins = bins
         n = len(bins)+1
         m = len(ybins)+1
-        # TODO: check type of x and y!
-        assert len(x)==len(y)
         # digitize x and y
         i_sequence = _np.digitize(_np.concatenate(x), bins)
         j_sequence = _np.digitize(_np.concatenate(y), ybins)
@@ -245,13 +279,14 @@ class TRAM(_Estimator, _MultiThermModel):
         user_index_sequence = i_sequence * m + j_sequence
         the_pmf = _np.zeros(shape=n*m, dtype=_np.float64)
         _tram.get_unbiased_user_free_energies(
-            pointwise_free_energies,
+            _np.conatenate(pointwise_free_energy_trajs),
             user_index_sequence.astype(_np.intc),
             the_pmf)
 
         return the_pmf.reshape((n,m)), bins, ybins
 
-    def expectation(self, observables_trajs):
+    @staticmethod
+    def expectation(pointwise_free_energies, observable_trajs):
         # TODO: compute per cluster expectations and the global expectation
         # returns (vector of per cluster expectations, global expectation)
         # To to the "per cluster" part, we have to use the conf_state_sequence.

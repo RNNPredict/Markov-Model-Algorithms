@@ -93,6 +93,11 @@ class TestTRAMwith5StateModel(unittest.TestCase):
         # lower bound on the log-likelihood must be maximal at convergence
         assert np.all(tram.logL_history[-1]+1.E-5>=tram.logL_history[0:-1])
 
+        # simple test: just call the methods
+        mu = tram.pointwise_unbiased_free_energies()
+        x = [traj[:,1] for traj in self.trajs]
+        pyemma.thermo.TRAM(mu, x, x, np.arange(0,4).astype(np.float64))
+
     def test_5_state_model_direct(self):
         tram = pyemma.thermo.TRAM(lag=1, maxerr=1E-13, lll_out=10, direct_space=True)
         tram.estimate(self.trajs)
