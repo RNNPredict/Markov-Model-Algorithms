@@ -279,7 +279,7 @@ class TRAM(_Estimator, _MultiThermModel):
         user_index_sequence = i_sequence * m + j_sequence
         the_pmf = _np.zeros(shape=n*m, dtype=_np.float64)
         _tram.get_unbiased_user_free_energies(
-            _np.conatenate(pointwise_free_energy_trajs),
+            _np.concatenate(pointwise_free_energy_trajs),
             user_index_sequence.astype(_np.intc),
             the_pmf)
 
