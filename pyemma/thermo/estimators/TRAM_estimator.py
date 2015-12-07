@@ -16,13 +16,15 @@ except ImportError:
 
 class TRAM(_Estimator, _MultiThermModel):
     def __init__(self, lag=1, ground_state=None, count_mode='sliding',
-                 dt_traj='1 step', maxiter=1000, maxerr=1e-5):
+                 dt_traj='1 step', maxiter=1000, maxerr=1e-5, err_out=0, lll_out=0):
         self.lag = lag
         self.ground_state = ground_state
         self.count_mode = count_mode
         self.dt_traj = dt_traj
         self.maxiter = maxiter
         self.maxerr = maxerr
+        self.err_out = err_out
+        self.lll_out = lll_out
         # set cset variable
         self.model_active_set = None
         # set iteration variables
@@ -95,21 +97,22 @@ class TRAM(_Estimator, _MultiThermModel):
 
 
         # run mbar to generate a good initial guess
-        f_therm, f, self.biased_conf_energies = estimate(
-            self.state_counts.sum(axis=1), bias_energy_sequence,
-            _np.ascontiguousarray(state_sequence[:, 1]), maxiter=1000, maxerr=1.0E-8)
+        # f_therm, f, self.biased_conf_energies = _mbar.estimate(
+        #     self.state_counts.sum(axis=1), bias_energy_sequence,
+        #     _np.ascontiguousarray(state_sequence[:, 1]), maxiter=1000, maxerr=1.0E-8)
 
         # run estimator
-        self.biased_conf_energies, conf_energies, therm_energies, self.log_lagrangian_mult = _tram.estimate(
+        self.biased_conf_energies, conf_energies, therm_energies, self.log_lagrangian_mult, self.err, self.lll = _tram.estimate(
             self.count_matrices, state_counts, bias_energy_sequence, _np.ascontiguousarray(state_sequence[:, 1]),
-            maxiter=self.maxiter, maxerr=self.maxerr,
+            maxiter=self.maxiter, maxerr=self.maxerr, err_out=self.err_out, lll_out= self.lll_out,
             log_lagrangian_mult=self.log_lagrangian_mult,
             biased_conf_energies=self.biased_conf_energies)
 
         # compute models
+        scratch_M = _np.zeros(shape=conf_energies.shape, dtype=_np.float64)
         fmsms = [_tram.estimate_transition_matrix(
             self.log_lagrangian_mult, self.biased_conf_energies,
-            self.count_matrices, K) for K in range(self.nthermo)]
+            self.count_matrices, scratch_M, K) for K in range(self.nthermo)]
         self.model_active_set = [_largest_connected_set(msm, directed=False) for msm in fmsms]
         fmsms = [_np.ascontiguousarray(
             (msm[lcc, :])[:, lcc]) for msm, lcc in zip(fmsms, self.model_active_set)]
