@@ -81,7 +81,7 @@ class TestTRAMwith5StateModel(unittest.TestCase):
         
 
     def test_5_state_model(self):
-        tram = pyemma.thermo.TRAM(lag=1, maxerr=1E-13, lll_out=10, direct_space=False)
+        tram = pyemma.thermo.TRAM(lag=1, maxerr=1E-13, lll_out=10, direct_space=False, nn=1)
         tram.estimate(self.trajs)
 
         log_pi_K_i = tram.biased_conf_energies.copy()
@@ -99,7 +99,7 @@ class TestTRAMwith5StateModel(unittest.TestCase):
         pyemma.thermo.TRAM(mu, x, x, np.arange(0,4).astype(np.float64))
 
     def test_5_state_model_direct(self):
-        tram = pyemma.thermo.TRAM(lag=1, maxerr=1E-13, lll_out=10, direct_space=True)
+        tram = pyemma.thermo.TRAM(lag=1, maxerr=1E-13, lll_out=10, direct_space=True, nn=1)
         tram.estimate(self.trajs)
 
         log_pi_K_i = tram.biased_conf_energies.copy()
@@ -133,7 +133,7 @@ class TestTRAMasReversibleMSM(unittest.TestCase):
         cls.T_ref = msmtools.estimation.tmatrix(c, reversible=True).toarray()
 
     def test_reversible_msm(self):
-        tram = pyemma.thermo.TRAM(lag=1,maxerr=1.E-20, lll_out=10, direct_space=False)
+        tram = pyemma.thermo.TRAM(lag=1,maxerr=1.E-20, lll_out=10, direct_space=False, nn=None)
         tram.estimate(self.tram_traj)
         #pos = np.unravel_index(np.argmax(np.abs(T_ref-tram.models[0].transition_matrix)),T_ref.shape)
         assert np.allclose(self.T_ref,  tram.models[0].transition_matrix, atol=1.E-4)
@@ -144,7 +144,7 @@ class TestTRAMasReversibleMSM(unittest.TestCase):
         assert np.all(tram.logL_history[-1]+1.E-5>=tram.logL_history[0:-1])
 
     def test_reversible_msm_direct(self):
-        tram = pyemma.thermo.TRAM(lag=1,maxerr=1.E-20, lll_out=10, direct_space=True)
+        tram = pyemma.thermo.TRAM(lag=1,maxerr=1.E-20, lll_out=10, direct_space=True, nn=None)
         tram.estimate(self.tram_traj)
         #pos = np.unravel_index(np.argmax(np.abs(T_ref-tram.models[0].transition_matrix)),T_ref.shape)
         assert np.allclose(self.T_ref,  tram.models[0].transition_matrix, atol=1.E-4)

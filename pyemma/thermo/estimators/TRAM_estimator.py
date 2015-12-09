@@ -15,6 +15,7 @@ try:
     from thermotools import mbar as _mbar
     from thermotools import dtram as _dtram
     from thermotools import util as _util
+    from thermotools import cset as _cset
 except ImportError:
     pass
 
@@ -33,7 +34,7 @@ class EmptyState(RuntimeWarning):
 class TRAM(_Estimator, _MultiThermModel):
     def __init__(self, lag=1, ground_state=None, count_mode='sliding',
                  dt_traj='1 step', maxiter=1000, maxerr=1e-5, callback=None,
-                 N_dtram_accelerations=0,
+                 nn=None, N_dtram_accelerations=0,
                  dTRAM_mode=False, direct_space=False,
                  initialization='MBAR', err_out=0, lll_out=0
                  ):
@@ -47,6 +48,7 @@ class TRAM(_Estimator, _MultiThermModel):
         self.model_active_set = None
         # set iteration variables
         self.biased_conf_energies = None
+        self.mbar_biased_conf_energies = None
         self.log_lagrangian_mult = None
         self.call_back = callback
         self._direct_space = direct_space
@@ -55,6 +57,8 @@ class TRAM(_Estimator, _MultiThermModel):
         self._dTRAM_mode = dTRAM_mode
         self.err_out = err_out
         self.lll_out = lll_out
+        self.nn = nn
+        self.cset_hack = False # hack
 
     def _estimate(self, trajs):
         """
@@ -92,95 +96,69 @@ class TRAM(_Estimator, _MultiThermModel):
             sliding=self.count_mode, sparse_return=False, nstates=self.nstates_full)
 
         # restrict to connected set
-        C_sum = self.count_matrices_full.sum(axis=0)
-        # TODO: report fraction of lost counts
+        self.csets, pcset = _cset.compute_csets(self.state_counts_full, self.count_matrices_full, nn=self.nn)
+        self.active_set = pcset
+        tramtrajs_full = _np.concatenate(trajs)
+        # We don't relabel states anymore, with k-dependent csets that would be too much craziness.
+        # Perhaps we should do the conversion of tramtrajs trajectory-wise?
+        self.state_counts, self.count_matrices, tramtrajs = _cset.restrict_to_csets(
+                                                               self.state_counts_full, 
+                                                               self.count_matrices_full,
+                                                               tramtrajs_full, 
+                                                               self.csets)
+        print 'size of projected connected set is', len(pcset)
 
-        cset = _largest_connected_set(C_sum, directed=True)
-        self.active_set = cset
-        # correct counts
-        self.count_matrices = self.count_matrices_full[:, cset[:, _np.newaxis], cset]
-        self.count_matrices = _np.require(self.count_matrices, dtype=_np.intc ,requirements=['C', 'A'])
-        state_counts = self.state_counts_full[:, cset]
-        state_counts = _np.require(state_counts, dtype=_np.intc, requirements=['C', 'A'])
-        # create flat bias energy arrays
-        state_sequence_full = None
-        bias_energy_sequence_full = None
-        for traj in trajs:
-            if state_sequence_full is None and bias_energy_sequence_full is None:
-                state_sequence_full = traj[:, :2]
-                bias_energy_sequence_full = traj[:, 2:]
-            else:
-                state_sequence_full = _np.concatenate(
-                    (state_sequence_full, traj[:, :2]), axis=0)
-                bias_energy_sequence_full = _np.concatenate(
-                    (bias_energy_sequence_full, traj[:, 2:]), axis=0)
-        state_sequence_full = _np.ascontiguousarray(state_sequence_full.astype(_np.intc))
-        bias_energy_sequence_full = _np.ascontiguousarray(
-            bias_energy_sequence_full.astype(_np.float64).transpose())
-        state_sequence, bias_energy_sequence = _util.restrict_samples_to_cset(
-            state_sequence_full, bias_energy_sequence_full, self.active_set)
-        
+        self.conf_state_sequence = tramtrajs[:,1]
+        self.conf_state_sequence = _np.require(self.conf_state_sequence, dtype=_np.intc, requirements=['C', 'A'])
+        self.bias_energy_sequence = tramtrajs[:,2:].T
+        self.bias_energy_sequence = _np.require(self.bias_energy_sequence, dtype=_np.float64, requirements=['C', 'A'])
+
         # self-test
-        assert _np.all(_np.bincount(state_sequence[:, 1]) == state_counts.sum(axis=0))
-        assert _np.all(_np.bincount(state_sequence[:, 0]) == state_counts.sum(axis=1))
-        assert _np.all(state_counts >= _np.maximum(self.count_matrices.sum(axis=1), self.count_matrices.sum(axis=2)))
+        assert _np.all(self.state_counts >= _np.maximum(self.count_matrices.sum(axis=1), self.count_matrices.sum(axis=2)))        
+        assert _np.all(_np.bincount(tramtrajs[:,0].astype(int), minlength=self.nthermo) == self.state_counts.sum(axis=1))
+        assert _np.all(_np.bincount(self.conf_state_sequence, minlength=self.nstates_full) == self.state_counts.sum(axis=0))
 
-        # store intermediate resuts (in the instance)
-        self.state_counts = state_counts
-        self.bias_energy_sequence = bias_energy_sequence
-        self.state_sequence = state_sequence
-        self.trajs = trajs
+        self.trajs = trajs # used in pointwise-free-energy methods
 
-        for k in range(state_counts.shape[0]):
-            if state_counts[k,:].sum() == 0:
+        for k in range(self.state_counts.shape[0]):
+            if self.state_counts[k,:].sum() == 0:
                 warnings.warn('Thermodynamic state %d contains no samples after reducing to the connected set.'%k, EmptyState)
             if self.count_matrices[k,:,:].sum() == 0:
                 warnings.warn('Thermodynamic state %d contains no transitions after reducing to the connected set.'%k, EmptyState)
 
-        if self.initialization == 'MBAR' and self.biased_conf_energies is None:
+        if self.initialization == 'MBAR' and self.mbar_biased_conf_energies is None:
             # initialize with MBAR
             def MBAR_printer(**kwargs):
                 if kwargs['iteration_step'] % 100 == 0:
                      print 'preMBAR', kwargs['iteration_step'], kwargs['err']
-            mbar_result  = _mbar_direct.estimate(state_counts.sum(axis=1), bias_energy_sequence,
-                                                 _np.ascontiguousarray(state_sequence[:, 1]),
-                                                 maxiter=100000, maxerr=1.0E-8, callback=MBAR_printer)
+            if self._direct_space:
+                mbar = _mbar_direct
+            else:
+                mbar = _mbar
+            self.conf_state_sequence_full = tramtrajs_full[:,1]
+            self.conf_state_sequence_full = _np.require(self.conf_state_sequence_full, dtype=_np.intc, requirements=['C', 'A'])
+            self.bias_energy_sequence_full = tramtrajs_full[:,2:].T
+            self.bias_energy_sequence_full = _np.require(self.bias_energy_sequence_full, dtype=_np.float64, requirements=['C', 'A'])
+            mbar_result  = mbar.estimate(self.state_counts_full.sum(axis=1), self.bias_energy_sequence_full,
+                                         self.conf_state_sequence_full,
+                                         maxiter=100000, maxerr=1.0E-8, callback=MBAR_printer, n_conf_states=self.nstates_full)
             self.mbar_therm_energies, self.mbar_unbiased_conf_energies, self.mbar_biased_conf_energies, mbar_error_history = mbar_result
             self.biased_conf_energies = self.mbar_biased_conf_energies
 
         # run estimator
-        if self._dTRAM_mode: # TODO: remove dTRAM mode
-            # use dTRAM (initialized with MBAR) instead of TRAM
-            assert self.biased_conf_energies is not None
-            print 'Hello dTRAM.'
-            dTRAM_biases = self.biased_conf_energies
-
-            def dTRAM_translator(**kwargs):
-                if self.call_back is not None:
-                    kwargs['biased_conf_energies'] = kwargs['conf_energies'] + dTRAM_biases
-                    kwargs['old_biased_conf_energies'] = kwargs['old_conf_energies'] + dTRAM_biases
-                    self.call_back(**kwargs)
-
-            dTRAM_result = _dtram.estimate(self.count_matrices, dTRAM_biases, maxiter=1000000, maxerr=1.E-8, call_back=dTRAM_translator)
-            dTRAM_conf_energies = dTRAM_result[1]
-            self.log_lagrangian_mult = dTRAM_result[2]
-            self.biased_conf_energies = dTRAM_conf_energies + dTRAM_biases
-            conf_energies = dTRAM_conf_energies
-            therm_energies = dTRAM_result[0]
+        if self._direct_space:
+            tram = _tram_direct
         else:
-            if self._direct_space:
-                tram = _tram_direct
-            else:
-                tram = _tram
-            self.biased_conf_energies, conf_energies, therm_energies, self.log_lagrangian_mult, self.error_history, self.logL_history = tram.estimate(
-                self.count_matrices, self.state_counts, bias_energy_sequence, _np.ascontiguousarray(state_sequence[:, 1]),
-                maxiter = self.maxiter, maxerr = self.maxerr,
-                log_lagrangian_mult = self.log_lagrangian_mult,
-                biased_conf_energies = self.biased_conf_energies,
-                err_out = self.err_out,
-                lll_out = self.lll_out,
-                callback = self.call_back,
-                N_dtram_accelerations = self.N_dtram_accelerations)
+            tram = _tram
+        self.biased_conf_energies, conf_energies, therm_energies, self.log_lagrangian_mult, self.error_history, self.logL_history = tram.estimate(
+            self.count_matrices, self.state_counts, self.bias_energy_sequence, self.conf_state_sequence,
+            maxiter = self.maxiter, maxerr = self.maxerr,
+            log_lagrangian_mult = self.log_lagrangian_mult,
+            biased_conf_energies = self.biased_conf_energies,
+            err_out = self.err_out,
+            lll_out = self.lll_out,
+            callback = self.call_back,
+            N_dtram_accelerations = self.N_dtram_accelerations)
 
         # compute models
         fmsms = [_tram.estimate_transition_matrix(
@@ -209,19 +187,22 @@ class TRAM(_Estimator, _MultiThermModel):
         _tram.get_pointwise_unbiased_free_energies(
             self.log_lagrangian_mult, self.biased_conf_energies,
             self.count_matrices, self.bias_energy_sequence,
-            _np.ascontiguousarray(self.state_sequence[:, 1]), self.state_counts,
+            self.conf_state_sequence, self.state_counts,
             None, None, mu_cset)
         # Reindex mu such that its indices corresponds to the indices of the
         # dtrajs given by the user (on the full set). Give all samples
         # whose Markov state is not in the connected set a weight of 0.
         j = 0
         mu_trajs = []
+        valid = _np.zeros(self.state_counts.shape, dtype=bool)
+        for k,cset in enumerate(self.csets):
+            valid[k,cset] = True
         for traj in self.trajs:
             full_size = traj.shape[0]
-            valid = _np.in1d(traj[:,1], self.active_set)
-            restricted_size = _np.count_nonzero(valid)
+            ok_traj = valid[traj[:,0].astype(int), traj[:,1].astype(int)]
+            restricted_size = _np.count_nonzero(ok_traj)
             mu_traj = _np.ones(shape=full_size, dtype=_np.float64)*_np.inf
-            mu_traj[valid] = mu_cset[j:j+restricted_size]
+            mu_traj[ok_traj] = mu_cset[j:j+restricted_size]
             mu_trajs.append(mu_traj)
             j+= restricted_size
         assert j==mu_cset.shape[0]
@@ -236,12 +217,15 @@ class TRAM(_Estimator, _MultiThermModel):
             self.mbar_therm_energies, None, mu_cset)
         j = 0
         mu_trajs = []
+        valid = _np.zeros(self.state_counts.shape, dtype=bool) # TODO: abstract this a bit
+        for k,cset in enumerate(self.csets):
+            valid[k,cset] = True
         for traj in self.trajs:
             full_size = traj.shape[0]
-            valid = _np.in1d(traj[:,1], self.active_set)
-            restricted_size = _np.count_nonzero(valid)
+            ok_traj = valid[traj[:,0].astype(int), traj[:,1].astype(int)]
+            restricted_size = _np.count_nonzero(ok_traj)
             mu_traj = _np.ones(shape=full_size, dtype=_np.float64)*_np.inf
-            mu_traj[valid] = mu_cset[j:j+restricted_size]
+            mu_traj[ok_traj] = mu_cset[j:j+restricted_size]
             mu_trajs.append(mu_traj)
             j+= restricted_size
         assert j==mu_cset.shape[0]
