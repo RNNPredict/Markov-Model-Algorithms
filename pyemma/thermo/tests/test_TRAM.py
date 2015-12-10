@@ -46,6 +46,22 @@ def generate_trajectory(transition_matrices, bias_energies, K, n_samples, x0):
         h += 1
     return traj
 
+def generate_simple_trajectory(transition_matrix, n_samples, x0):
+    """generates a list of TRAM trajs"""
+
+    n_states = transition_matrix.shape[0]
+    traj = np.zeros(n_samples)
+    x = x0
+    traj[0] = x
+    h = 1
+    for s in range(n_samples-1):
+        x_new = tower_sample(transition_matrix[x,:])
+        assert x_new < n_states
+        x = x_new
+        traj[h] = x
+        h += 1
+    return traj
+
 def T_matrix(energy):
     n = energy.shape[0]
     metropolis = energy[np.newaxis, :] - energy[:, np.newaxis]
@@ -62,7 +78,7 @@ def T_matrix(energy):
     return metr_hast
 
 
-class TestTRAMwith5StateModel(unittest.TestCase):
+class TestTRAMwith5StateDTRAMModel(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.bias_energies = np.zeros((2,5))
@@ -78,7 +94,6 @@ class TestTRAMwith5StateModel(unittest.TestCase):
         cls.trajs.append(generate_trajectory(cls.T,cls.bias_energies_sh,0,n_samples,0))
         cls.trajs.append(generate_trajectory(cls.T,cls.bias_energies_sh,0,n_samples,4))
         cls.trajs.append(generate_trajectory(cls.T,cls.bias_energies_sh,1,n_samples,2))
-        
 
     def test_5_state_model(self):
         tram = pyemma.thermo.TRAM(lag=1, maxerr=1E-13, lll_out=10, direct_space=False, nn=1)
@@ -135,7 +150,6 @@ class TestTRAMasReversibleMSM(unittest.TestCase):
     def test_reversible_msm(self):
         tram = pyemma.thermo.TRAM(lag=1,maxerr=1.E-20, lll_out=10, direct_space=False, nn=None)
         tram.estimate(self.tram_traj)
-        #pos = np.unravel_index(np.argmax(np.abs(T_ref-tram.models[0].transition_matrix)),T_ref.shape)
         assert np.allclose(self.T_ref,  tram.models[0].transition_matrix, atol=1.E-4)
 
         # Lagrange multipliers should be > 0
@@ -146,7 +160,6 @@ class TestTRAMasReversibleMSM(unittest.TestCase):
     def test_reversible_msm_direct(self):
         tram = pyemma.thermo.TRAM(lag=1,maxerr=1.E-20, lll_out=10, direct_space=True, nn=None)
         tram.estimate(self.tram_traj)
-        #pos = np.unravel_index(np.argmax(np.abs(T_ref-tram.models[0].transition_matrix)),T_ref.shape)
         assert np.allclose(self.T_ref,  tram.models[0].transition_matrix, atol=1.E-4)
 
         # Lagrange multipliers should be > 0
@@ -154,6 +167,121 @@ class TestTRAMasReversibleMSM(unittest.TestCase):
         # lower bound on the log-likelihood must be maximal at convergence
         assert np.all(tram.logL_history[-1]+1.E-5>=tram.logL_history[0:-1])
 
+class TestTRAMwithTRAMmodel(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # (1-D FEL) TRAM unit test
+        # (1) define mu(k,x) on a fine grid, k=0 is defined as unbiased
+        # (2) define coarse grid (of Markov states) on x
+        # (3) -> compute pi from it and the conditional mu_i^k
+        # (4) -> from pi, generate transtion matrix
+        # (5) -> run two-level stochastic process to generate the bias trajectories
+
+        # (1)
+        n_therm_states = 4
+        n_conf_states = 3
+        n_micro_states = 50
+        traj_length = 20000
+
+        mu = np.zeros((n_therm_states, n_micro_states))
+        for k in range(n_therm_states):
+            mu[k, :] = np.random.rand(n_micro_states)*0.9 + 0.1
+            if k>0:
+               mu[k,:] *= (np.random.rand()*0.9 + 0.1)
+        energy = -np.log(mu)
+        # (2)
+        chi = np.zeros((n_micro_states, n_conf_states)) # (crisp)
+        for i in range(n_conf_states):
+            chi[n_micro_states*i//n_conf_states:n_micro_states*(i+1)//n_conf_states, i] = 1
+        assert np.allclose(chi.sum(axis=1), np.ones(n_micro_states))
+        # (3)
+        #             k  x  i                 k           x  i
+        mu_joint = mu[:, :, np.newaxis] * chi[np.newaxis, :, :]
+        assert np.allclose(mu_joint.sum(axis=2), mu)
+        z = mu_joint.sum(axis=1)
+        pi = z / z.sum(axis=1)[:, np.newaxis]
+        assert np.allclose(pi.sum(axis=1), np.ones(n_therm_states))
+        mu_conditional = mu_joint / z[:, np.newaxis, :]
+        assert np.allclose(mu_conditional.sum(axis=1), np.ones((n_therm_states, n_conf_states)))
+        # (4)
+        T = np.zeros((n_therm_states, n_conf_states, n_conf_states))
+        for k in range(n_therm_states):
+            T[k,:,:] = T_matrix(-np.log(pi[k,:]))
+            assert np.allclose(T[k,:,:].sum(axis=1), np.ones(n_conf_states))
+        # (5)
+        tramtrajs = [np.zeros((traj_length, 2+n_therm_states)) for k in range(n_therm_states)]
+        xes = np.zeros(n_therm_states*traj_length, dtype=int)
+        C = np.zeros((n_therm_states, n_conf_states, n_conf_states), dtype=int)
+        for k in range(n_therm_states):
+            tramtrajs[k][:,0] = k
+            tramtrajs[k][:,1] = generate_simple_trajectory(T[k,:,:], traj_length, 0)
+            C[k,:,:] = msmtools.estimation.count_matrix(tramtrajs[k][:,1].astype(int), lag=1).toarray()
+            for t,i in enumerate(tramtrajs[k][:,1]):
+                x = tower_sample(mu_conditional[k,:,int(i)])
+                assert mu_conditional[k,x,int(i)] > 0
+                xes[k*traj_length+t] = x
+                tramtrajs[k][t,2:] = energy[:,x] - energy[0,x] # define k=0 as "unbiased"
+
+        cls.n_conf_states = n_conf_states
+        cls.n_therm_states = n_therm_states
+        cls.tramtrajs = tramtrajs
+        cls.z = z
+        cls.T = T
+        cls.n_therm_states = n_therm_states
+        cls.C = C
+        cls.energy = energy
+        cls.mu = mu
+        cls.xes = xes
+
+    def test_with_TRAM_model_direct(self):
+        self.with_TRAM_model(True)
+
+    def test_with_TRAM_model_log_space(self):
+        self.with_TRAM_model(False)
+
+    def with_TRAM_model(self, direct_space):
+        # run TRAM
+        tram = pyemma.thermo.TRAM(lag=1, maxerr=1E-10, lll_out=10, direct_space=direct_space, nn=None)
+        tram.estimate(self.tramtrajs)
+
+        # csets must include all states
+        for k in range(self.n_therm_states):
+            assert len(tram.csets[k]) == self.n_conf_states
+
+        # check exact identities
+        # (1) sum_j v_j T_ji + v_i = sum_j c_ij + sum_j c_ji
+        for k in range(self.n_therm_states):
+            lagrangian_mult = np.exp(tram.log_lagrangian_mult[k,:])
+            transition_matrix = tram.models[k].transition_matrix
+            assert np.allclose(
+                lagrangian_mult.T.dot(transition_matrix) + lagrangian_mult,
+                self.C[k,:,:].sum(axis=0) + self.C[k,:,:].sum(axis=1))
+        # (2) sum_jk v^k_j T^k_ji = sum_jk c^k_ji
+        total = np.zeros(self.n_conf_states)
+        for k in range(self.n_therm_states):
+            lagrangian_mult = np.exp(tram.log_lagrangian_mult[k,:])
+            transition_matrix = tram.models[k].transition_matrix
+            total += lagrangian_mult.T.dot(transition_matrix)
+        assert np.allclose(total, self.C.sum(axis=0).sum(axis=0))
+
+        # check transition matrices
+        for k in range(self.n_therm_states):
+            assert np.allclose(tram.models[k].transition_matrix, self.T[k,:,:], atol=0.1)
+
+        # check pi
+        z_normed = self.z / self.z[0,:].sum()
+        assert np.allclose(tram.biased_conf_energies, -np.log(z_normed), atol=0.1)
+
+        # check mu
+        # calculate reference
+        f0 = -np.log(self.mu[0, self.xes].sum())
+        ref_p_u_f_es = self.energy[0, self.xes] - f0
+        assert np.allclose(np.exp(-ref_p_u_f_es).sum(), 1)
+        # tram result
+        test_p_u_f_es = np.concatenate(tram.pointwise_unbiased_free_energies())
+        assert np.allclose(np.exp(-test_p_u_f_es).sum(), 1) # check normalized
+        print np.max(np.abs(ref_p_u_f_es-test_p_u_f_es))
+        assert np.allclose(ref_p_u_f_es, test_p_u_f_es, atol=1.0)
 
 if __name__ == "__main__":
     unittest.main()
