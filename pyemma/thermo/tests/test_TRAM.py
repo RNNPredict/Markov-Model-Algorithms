@@ -21,7 +21,8 @@ from six.moves import range
 
 import numpy as np
 import pyemma.thermo
-#from thermotools import tram as _tram
+from pyemma.thermo import EmptyState
+import warnings
 import msmtools
 
 def tower_sample(distribution):
@@ -77,6 +78,29 @@ def T_matrix(energy):
         metr_hast[i, i] = 0.0
         metr_hast[i, i] = 1.0 - metr_hast[i, :].sum()
     return metr_hast
+
+class TestTRAMexceptions(unittest.TestCase):
+    def test_warning_empty_ensemble(self):
+        # have no samples in ensemble #0
+        bias_energies = np.zeros((2,2))
+        bias_energies[1,:] = np.array([0.0,0.0])
+        T = np.zeros((2,2,2))
+        T[1,:,:] = T_matrix(bias_energies[1,:])
+        n_samples = 100
+        trajs = [generate_trajectory(T,bias_energies,1,n_samples,0)]
+        tram = pyemma.thermo.TRAM(lag=1)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            tram.estimate(trajs)
+            assert len(w) >= 1
+            assert any(issubclass(v.category, EmptyState) for v in w)
+
+    def test_exception_wrong_format(self):
+        traj = np.zeros((10,3))
+        traj[:,0] = 4
+        tram = pyemma.thermo.TRAM(lag=1)
+        with self.assertRaises(AssertionError):
+            tram.estimate([traj])
 
 
 class TestTRAMwith5StateDTRAMModel(unittest.TestCase):
@@ -275,6 +299,9 @@ class TestTRAMwithTRAMmodel(unittest.TestCase):
         pi = np.exp(-tram.biased_conf_energies[0,:])
         pi /= pi.copy().sum()
         assert np.allclose(tram.stationary_distribution, pi) # self-consistency of TRAM
+
+        # check log-likelihood
+        assert np.all(tram.logL_history[-1]+1.E-5>=tram.logL_history[0:-1])
 
         # check that z[0,:] can be computed from pointwise estimates as well
         #mu = np.concatenate(tram.pointwise_unbiased_free_energies())
