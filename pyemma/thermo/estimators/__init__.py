@@ -17,4 +17,4 @@
 
 from pyemma.thermo.estimators.WHAM_estimator import WHAM
 from pyemma.thermo.estimators.DTRAM_estimator import DTRAM
-from pyemma.thermo.estimators.TRAM_estimator import TRAM
+from pyemma.thermo.estimators.TRAM_estimator import TRAM, EmptyState

@@ -54,11 +54,9 @@ class TRAM(_Estimator, _MultiThermModel):
         self._direct_space = direct_space
         self.initialization = initialization
         self.N_dtram_accelerations = N_dtram_accelerations
-        self._dTRAM_mode = dTRAM_mode
         self.err_out = err_out
         self.lll_out = lll_out
         self.nn = nn
-        self.cset_hack = False # hack
 
     def _estimate(self, trajs):
         """
