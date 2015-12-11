@@ -308,15 +308,16 @@ class TestTRAMwithTRAMmodel(unittest.TestCase):
         # check log-likelihood
         assert np.all(tram.logL_history[-1]+1.E-5>=tram.logL_history[0:-1])
 
-        # check mu # TODO: k>0
-        # reference
-        f0 = -np.log(self.mu[0, :].sum())
-        reference_fel = self.energy[0, :] - f0
-        # TRAM result
-        test_p_u_f_es = np.concatenate(tram.pointwise_unbiased_free_energies())
-        counts,_ = np.histogram(self.xes, weights=np.exp(-test_p_u_f_es), bins=self.n_micro_states)
-        test_fel = -np.log(counts) + np.log(counts.sum())
-        assert np.allclose(reference_fel, test_fel, atol=0.1)
+        # check mu
+        for k in range(self.n_therm_states):
+            # reference
+            f0 = -np.log(self.mu[k, :].sum())
+            reference_fel = self.energy[k, :] - f0
+            # TRAM result
+            test_p_u_f_es = np.concatenate(tram.pointwise_unbiased_free_energies(k))
+            counts,_ = np.histogram(self.xes, weights=np.exp(-test_p_u_f_es), bins=self.n_micro_states)
+            test_fel = -np.log(counts) + np.log(counts.sum())
+            assert np.allclose(reference_fel, test_fel, atol=0.1)
 
 
 if __name__ == "__main__":

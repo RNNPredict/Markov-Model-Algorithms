@@ -148,7 +148,7 @@ class TRAM(_Estimator, _MultiThermModel):
             tram = _tram_direct
         else:
             tram = _tram
-        self.biased_conf_energies, conf_energies, therm_energies, self.log_lagrangian_mult, self.error_history, self.logL_history = tram.estimate(
+        self.biased_conf_energies, conf_energies, self.therm_energies, self.log_lagrangian_mult, self.error_history, self.logL_history = tram.estimate(
             self.count_matrices, self.state_counts, self.bias_energy_sequence, self.conf_state_sequence,
             maxiter = self.maxiter, maxerr = self.maxerr,
             log_lagrangian_mult = self.log_lagrangian_mult,
@@ -168,7 +168,7 @@ class TRAM(_Estimator, _MultiThermModel):
         models = [_MSM(msm) for msm in fmsms]
 
         # set model parameters to self
-        self.set_model_params(models=models, f_therm=therm_energies, f=conf_energies)
+        self.set_model_params(models=models, f_therm=self.therm_energies, f=conf_energies)
         # done, return estimator (+model?)
         return self
 
@@ -180,13 +180,14 @@ class TRAM(_Estimator, _MultiThermModel):
 
     def pointwise_unbiased_free_energies(self, therm_state=None):
         if therm_state is not None:
-            raise Exception('Choice of therm_state not implemented yet.')
+            assert therm_state<=self.nthermo
         mu_cset = _np.zeros(self.bias_energy_sequence.shape[1], dtype=_np.float64)
         _tram.get_pointwise_unbiased_free_energies(
+            therm_state,
             self.log_lagrangian_mult, self.biased_conf_energies,
-            self.count_matrices, self.bias_energy_sequence,
-            self.conf_state_sequence, self.state_counts,
-            None, None, mu_cset)
+            self.therm_energies, self.count_matrices,
+            self.bias_energy_sequence, self.conf_state_sequence,
+            self.state_counts, None, None, mu_cset)
         # Reindex mu such that its indices corresponds to the indices of the
         # dtrajs given by the user (on the full set). Give all samples
         # whose Markov state is not in the connected set a weight of 0.
