@@ -123,7 +123,13 @@ class TestTRAMwith5StateDTRAMModel(unittest.TestCase):
         cls.trajs.append(generate_trajectory(cls.T,cls.bias_energies_sh,1,n_samples,2))
 
     def test_5_state_model(self):
-        tram = pyemma.thermo.TRAM(lag=1, maxerr=1E-13, lll_out=10, direct_space=False, nn=1)
+        self.run_5_state_model(False)
+
+    def test_5_state_model_direct(self):
+        self.run_5_state_model(True)
+
+    def run_5_state_model(self, direct_space):
+        tram = pyemma.thermo.TRAM(lag=1, maxerr=1E-12, lll_out=10, direct_space=direct_space, nn=1)
         tram.estimate(self.trajs)
 
         log_pi_K_i = tram.biased_conf_energies.copy()
@@ -139,19 +145,6 @@ class TestTRAMwith5StateDTRAMModel(unittest.TestCase):
         mu = tram.pointwise_unbiased_free_energies()
         x = [traj[:,1] for traj in self.trajs]
         pyemma.thermo.TRAM(mu, x, x, np.arange(0,4).astype(np.float64))
-
-    def test_5_state_model_direct(self):
-        tram = pyemma.thermo.TRAM(lag=1, maxerr=1E-13, lll_out=10, direct_space=True, nn=1)
-        tram.estimate(self.trajs)
-
-        log_pi_K_i = tram.biased_conf_energies.copy()
-        log_pi_K_i[0,:] -= np.min(log_pi_K_i[0,:])
-        log_pi_K_i[1,:] -= np.min(log_pi_K_i[1,:])
-
-        assert np.allclose(log_pi_K_i, self.bias_energies, atol=0.1)
-
-        # lower bound on the log-likelihood must be maximal at convergence
-        assert np.all(tram.logL_history[-1]+1.E-5>=tram.logL_history[0:-1])
 
 
 class TestTRAMasReversibleMSM(unittest.TestCase):
@@ -174,19 +167,15 @@ class TestTRAMasReversibleMSM(unittest.TestCase):
         cls.tram_traj[:,1] = traj
 
         cls.T_ref = msmtools.estimation.tmatrix(c, reversible=True).toarray()
-
+        
     def test_reversible_msm(self):
-        tram = pyemma.thermo.TRAM(lag=1,maxerr=1.E-20, lll_out=10, direct_space=False, nn=None)
-        tram.estimate(self.tram_traj)
-        assert np.allclose(self.T_ref,  tram.models[0].transition_matrix, atol=1.E-4)
-
-        # Lagrange multipliers should be > 0
-        assert np.all(tram.log_lagrangian_mult > -1.E300)
-        # lower bound on the log-likelihood must be maximal at convergence
-        assert np.all(tram.logL_history[-1]+1.E-5>=tram.logL_history[0:-1])
+        self.reversible_msm(False)
 
     def test_reversible_msm_direct(self):
-        tram = pyemma.thermo.TRAM(lag=1,maxerr=1.E-20, lll_out=10, direct_space=True, nn=None)
+        self.reversible_msm(True)
+
+    def reversible_msm(self, direct_space):
+        tram = pyemma.thermo.TRAM(lag=1,maxerr=1.E-20, lll_out=10, direct_space=direct_space, nn=None)
         tram.estimate(self.tram_traj)
         assert np.allclose(self.T_ref,  tram.models[0].transition_matrix, atol=1.E-4)
 
@@ -194,7 +183,6 @@ class TestTRAMasReversibleMSM(unittest.TestCase):
         assert np.all(tram.log_lagrangian_mult > -1.E300)
         # lower bound on the log-likelihood must be maximal at convergence
         assert np.all(tram.logL_history[-1]+1.E-5>=tram.logL_history[0:-1])
-
 
 class TestTRAMwithTRAMmodel(unittest.TestCase):
     @classmethod
