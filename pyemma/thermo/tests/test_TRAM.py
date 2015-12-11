@@ -25,6 +25,7 @@ from pyemma.thermo import EmptyState
 import warnings
 import msmtools
 
+
 def tower_sample(distribution):
     cdf = np.cumsum(distribution)
     rnd = np.random.rand() * cdf[-1]
@@ -78,6 +79,7 @@ def T_matrix(energy):
         metr_hast[i, i] = 0.0
         metr_hast[i, i] = 1.0 - metr_hast[i, :].sum()
     return metr_hast
+
 
 class TestTRAMexceptions(unittest.TestCase):
     def test_warning_empty_ensemble(self):
@@ -151,6 +153,7 @@ class TestTRAMwith5StateDTRAMModel(unittest.TestCase):
         # lower bound on the log-likelihood must be maximal at convergence
         assert np.all(tram.logL_history[-1]+1.E-5>=tram.logL_history[0:-1])
 
+
 class TestTRAMasReversibleMSM(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -191,6 +194,7 @@ class TestTRAMasReversibleMSM(unittest.TestCase):
         assert np.all(tram.log_lagrangian_mult > -1.E300)
         # lower bound on the log-likelihood must be maximal at convergence
         assert np.all(tram.logL_history[-1]+1.E-5>=tram.logL_history[0:-1])
+
 
 class TestTRAMwithTRAMmodel(unittest.TestCase):
     @classmethod
@@ -249,6 +253,7 @@ class TestTRAMwithTRAMmodel(unittest.TestCase):
 
         cls.n_conf_states = n_conf_states
         cls.n_therm_states = n_therm_states
+        cls.n_micro_states = n_micro_states
         cls.tramtrajs = tramtrajs
         cls.z = z
         cls.T = T
@@ -303,27 +308,16 @@ class TestTRAMwithTRAMmodel(unittest.TestCase):
         # check log-likelihood
         assert np.all(tram.logL_history[-1]+1.E-5>=tram.logL_history[0:-1])
 
-        # check that z[0,:] can be computed from pointwise estimates as well
-        #mu = np.concatenate(tram.pointwise_unbiased_free_energies())
-        #pmf = np.zeros(shape=self.n_conf_states, dtype=np.float64)
-        #conf_state_sequence = np.concatenate([t[:,1] for t in self.tramtrajs]).astype(np.intc)
-        #_tram.get_unbiased_user_free_energies(mu, conf_state_sequence, pmf)
-        #assert np.allclose(pmf, -np.log(z_normed[0,:]), atol=0.02)
-
-        # check mu
-        # calculate reference
-        f0 = -np.log(self.mu[0, self.xes].sum())
-        ref_p_u_f_es = self.energy[0, self.xes] - f0
-        assert np.allclose(np.exp(-ref_p_u_f_es).sum(), 1)
-        # tram result
+        # check mu # TODO: k>0
+        # reference
+        f0 = -np.log(self.mu[0, :].sum())
+        reference_fel = self.energy[0, :] - f0
+        # TRAM result
         test_p_u_f_es = np.concatenate(tram.pointwise_unbiased_free_energies())
-        assert np.allclose(np.exp(-test_p_u_f_es).sum(), 1) # check normalized
-        #i = np.argmax(np.abs(ref_p_u_f_es-test_p_u_f_es))
-        #print ref_p_u_f_es[i]
-        #print test_p_u_f_es[i]
-        #print self.xes[i]
-        #print np.max(np.abs(ref_p_u_f_es-test_p_u_f_es))
-        assert np.allclose(ref_p_u_f_es, test_p_u_f_es, atol=1.5) # TODO: check why this is so bad
+        counts,_ = np.histogram(self.xes, weights=np.exp(-test_p_u_f_es), bins=self.n_micro_states)
+        test_fel = -np.log(counts) + np.log(counts.sum())
+        assert np.allclose(reference_fel, test_fel, atol=0.1)
+
 
 if __name__ == "__main__":
     unittest.main()
