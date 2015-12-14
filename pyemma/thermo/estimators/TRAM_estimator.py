@@ -74,7 +74,7 @@ class TRAM(_Estimator, _MultiThermModel):
         assert _types.is_list(trajs)
         for ttraj in trajs:
             _types.assert_array(ttraj, ndim=2, kind='f')
-            assert _np.shape(ttraj)[1] > 2 # TODO: make strict test
+            assert _np.shape(ttraj)[1] > 2
             
         # find dimensions
         self.nstates_full = int(max(_np.max(ttraj[:, 1]) for ttraj in trajs))+1
@@ -141,7 +141,7 @@ class TRAM(_Estimator, _MultiThermModel):
                                          self.conf_state_sequence_full,
                                          maxiter=100000, maxerr=1.0E-8, callback=MBAR_printer, n_conf_states=self.nstates_full)
             self.mbar_therm_energies, self.mbar_unbiased_conf_energies, self.mbar_biased_conf_energies, mbar_error_history = mbar_result
-            self.biased_conf_energies = self.mbar_biased_conf_energies
+            self.biased_conf_energies = self.mbar_biased_conf_energies.copy()
 
         # run estimator
         if self._direct_space:
