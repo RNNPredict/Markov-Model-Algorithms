@@ -34,6 +34,7 @@ class EmptyState(RuntimeWarning):
 class TRAM(_Estimator, _MultiThermModel):
     def __init__(self, lag=1, ground_state=None, count_mode='sliding',
                  dt_traj='1 step', maxiter=1000, maxerr=1e-5, callback=None,
+                 connectivity = 'summed_count_matrix', 
                  nn=None, N_dtram_accelerations=0,
                  dTRAM_mode=False, direct_space=False,
                  initialization='MBAR', err_out=0, lll_out=0
@@ -45,6 +46,7 @@ class TRAM(_Estimator, _MultiThermModel):
         self.maxiter = maxiter
         self.maxerr = maxerr
         # set cset variable
+        self.connectivity = connectivity
         self.model_active_set = None
         # set iteration variables
         self.biased_conf_energies = None
@@ -94,9 +96,9 @@ class TRAM(_Estimator, _MultiThermModel):
             sliding=self.count_mode, sparse_return=False, nstates=self.nstates_full)
 
         # restrict to connected set
-        self.csets, pcset = _cset.compute_csets(self.state_counts_full, self.count_matrices_full, nn=self.nn)
-        self.active_set = pcset
         tramtrajs_full = _np.concatenate(trajs)
+        self.csets, pcset = _cset.compute_csets(self.connectivity, self.state_counts_full, self.count_matrices_full, tramtrajs_full, nn=self.nn)
+        self.active_set = pcset
         # We don't relabel states anymore, with k-dependent csets that would be too much craziness.
         # Perhaps we should do the conversion of tramtrajs trajectory-wise?
         self.state_counts, self.count_matrices, tramtrajs = _cset.restrict_to_csets(
@@ -139,7 +141,7 @@ class TRAM(_Estimator, _MultiThermModel):
             self.bias_energy_sequence_full = _np.require(self.bias_energy_sequence_full, dtype=_np.float64, requirements=['C', 'A'])
             mbar_result  = mbar.estimate(self.state_counts_full.sum(axis=1), self.bias_energy_sequence_full,
                                          self.conf_state_sequence_full,
-                                         maxiter=100000, maxerr=1.0E-8, callback=MBAR_printer, n_conf_states=self.nstates_full)
+                                         maxiter=1000000, maxerr=1.0E-8, callback=MBAR_printer, n_conf_states=self.nstates_full)
             self.mbar_therm_energies, self.mbar_unbiased_conf_energies, self.mbar_biased_conf_energies, mbar_error_history = mbar_result
             self.biased_conf_energies = self.mbar_biased_conf_energies.copy()
 
