@@ -97,8 +97,13 @@ class TRAM(_Estimator, _MultiThermModel):
 
         # restrict to connected set
         tramtrajs_full = _np.concatenate(trajs)
-        self.csets, pcset = _cset.compute_csets(self.connectivity, self.state_counts_full, self.count_matrices_full, tramtrajs_full, nn=self.nn)
+        self.csets, pcset = _cset.compute_csets_TRAM(self.connectivity, self.state_counts_full, self.count_matrices_full, tramtrajs_full, nn=self.nn)
         self.active_set = pcset
+
+        for k in range(self.nthermo):
+            if len(self.csets[k]) == 0:
+                warnings.warn('Thermodynamic state %d contains no samples after reducing to the connected set.'%k, EmptyState)
+
         # We don't relabel states anymore, with k-dependent csets that would be too much craziness.
         # Perhaps we should do the conversion of tramtrajs trajectory-wise?
         self.state_counts, self.count_matrices, tramtrajs = _cset.restrict_to_csets(
@@ -121,8 +126,6 @@ class TRAM(_Estimator, _MultiThermModel):
         self.trajs = trajs # used in pointwise-free-energy methods
 
         for k in range(self.state_counts.shape[0]):
-            if self.state_counts[k,:].sum() == 0:
-                warnings.warn('Thermodynamic state %d contains no samples after reducing to the connected set.'%k, EmptyState)
             if self.count_matrices[k,:,:].sum() == 0:
                 warnings.warn('Thermodynamic state %d contains no transitions after reducing to the connected set.'%k, EmptyState)
 
