@@ -31,12 +31,16 @@ class WHAM(_Estimator, _MultiThermModel):
     array([[ 0.54,  0.46],
            [ 0.66,  0.34]])
     """
-    def __init__(self, bias_energies_full, stride=1, dt_traj='1 step', maxiter=100000, maxerr=1e-5):
+    def __init__(
+        self, bias_energies_full,
+        stride=1, dt_traj='1 step', maxiter=100000, maxerr=1e-5, err_out=0, lll_out=0):
         self.bias_energies_full = _types.ensure_ndarray(bias_energies_full, ndim=2, kind='numeric')
         self.stride = stride
         self.dt_traj = dt_traj
         self.maxiter = maxiter
         self.maxerr = maxerr
+        self.err_out = err_out
+        self.lll_out = lll_out
         # set derived quantities
         self.nthermo, self.nstates_full = bias_energies_full.shape
         # set iteration variables
@@ -58,25 +62,28 @@ class WHAM(_Estimator, _MultiThermModel):
         # validate input
         assert _types.is_list(trajs)
         for ttraj in trajs:
-            _types.assert_array(ttraj, ndim=2, kind='i')
+            _types.assert_array(ttraj, ndim=2, kind='numeric')
             assert _np.shape(ttraj)[1] == 2
 
         # harvest state counts
-        self.state_counts_full = _util.state_counts(trajs, nthermo=self.nthermo, nstates=self.nstates_full)
+        self.state_counts_full = _util.state_counts(
+            trajs, nthermo=self.nthermo, nstates=self.nstates_full)
 
         # active set
         # TODO: check for active thermodynamic set!
         self.active_set = _np.where(self.state_counts_full.sum(axis=0) > 0)[0]
-        self.state_counts = _np.ascontiguousarray(self.state_counts_full[:, self.active_set])
+        self.state_counts = _np.ascontiguousarray(
+            self.state_counts_full[:, self.active_set].astype(_np.intc))
         self.bias_energies = _np.ascontiguousarray(
             self.bias_energies_full[:, self.active_set], dtype=_np.float64)
 
         # run estimator
         # TODO: give convergence feedback!
-        self.therm_energies, self.conf_energies = _wham.estimate(
+        self.therm_energies, self.conf_energies, self.err, self.lll = _wham.estimate(
             self.state_counts, self.bias_energies,
             maxiter=self.maxiter, maxerr=self.maxerr,
-            f_K=self.therm_energies, f_i=self.conf_energies)
+            therm_energies=self.therm_energies, conf_energies=self.conf_energies,
+            err_out=self.err_out, lll_out=self.lll_out)
 
         # get stationary models
         sms = [_StationaryModel(

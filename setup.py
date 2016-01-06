@@ -209,7 +209,7 @@ metadata = dict(
                       'pyyaml',
                       'psutil>=3.1.1',
                       'decorator>=4.0.0',
-                      'thermotools>=0.1.8',
+                      'thermotools>=0.1.9',
                       ],
     zip_safe=False,
 )
