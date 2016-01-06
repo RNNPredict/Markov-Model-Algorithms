@@ -23,18 +23,23 @@ Created on 30.04.2015
 '''
 
 from __future__ import absolute_import
-import unittest
+
 import os
 import tempfile
-from glob import glob
+import unittest
 
-from pyemma.coordinates.data.traj_info_cache import _TrajectoryInfoCache as TrajectoryInfoCache
 import mdtraj
-import pkg_resources
-path = pkg_resources.resource_filename(__name__, 'data') + os.path.sep
+import pyemma
+from pyemma.coordinates.data.traj_info_cache import _TrajectoryInfoCache as TrajectoryInfoCache
+from pyemma.util.files import TemporaryDirectory
+from pyemma.datasets import get_bpti_test_data
+
+import numpy as np
+
+
 # os.path.join(path, 'bpti_mini.xtc')
-xtcfiles = glob(path + os.path.sep + "*.xtc")
-pdbfile = os.path.join(path, 'bpti_ca.pdb')
+xtcfiles = get_bpti_test_data()['trajs']
+pdbfile = get_bpti_test_data()['top']
 
 
 class TestTrajectoryInfoCache(unittest.TestCase):
@@ -42,6 +47,10 @@ class TestTrajectoryInfoCache(unittest.TestCase):
     def setUp(self):
         self.tmpfile = tempfile.mktemp()
         self.db = TrajectoryInfoCache(self.tmpfile)
+        
+    def tearDown(self):
+        del self.db
+        #os.unlink(self.tmpfile)
 
     def testCacheResults(self):
         # cause cache failures
@@ -55,6 +64,41 @@ class TestTrajectoryInfoCache(unittest.TestCase):
                 desired[f] = len(fh)
 
         self.assertEqual(results, desired)
+
+    def test_with_npy_file(self):
+        from pyemma.util.files import TemporaryDirectory
+        lengths = [1, 23, 27, ]
+        different_lengths_array = [np.empty((n, 3)) for n in lengths]
+        files = []
+        with TemporaryDirectory() as td:
+            for i, x in enumerate(different_lengths_array):
+                fn = os.path.join(td, "%i.npy" % i)
+                np.save(fn, x)
+                files.append(fn)
+
+            # cache it and compare
+            results = {f: self.db[f] for f in files}
+            expected = {fn: len(different_lengths_array[i]) for i, fn in enumerate(files)}
+
+            self.assertEqual(results, expected)
+            
+    def test_xyz(self):
+        traj = mdtraj.load(xtcfiles, top=pdbfile)
+        expected = len(traj)
+        import warnings
+        from pyemma.util.exceptions import EfficiencyWarning
+
+        with TemporaryDirectory() as td:
+            fn = os.path.join(td, 'test.xyz')
+            traj.save_xyz(fn)
+            with warnings.catch_warnings(record=True) as w:
+                reader = pyemma.coordinates.source(fn, top=pdbfile)
+                
+                self.assertEqual(len(w), 1)
+                self.assertEqual(w[0].category, EfficiencyWarning)
+                
+            self.assertEqual(reader.trajectory_length(0), expected)
+            
 
 if __name__ == "__main__":
     unittest.main()
