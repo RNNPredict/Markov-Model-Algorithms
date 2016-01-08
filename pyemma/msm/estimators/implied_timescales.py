@@ -131,7 +131,7 @@ class ImpliedTimescales(Estimator, ProgressReporter):
         if np.max(self._lags) >= maxlength:
             Ifit = np.where(self._lags < maxlength)[0]
             Inofit = np.where(self._lags >= maxlength)[0]
-            self.logger.warn('Ignoring lag times that exceed the longest trajectory: ' + str(self._lags[Inofit]))
+            self.logger.warning('Ignoring lag times that exceed the longest trajectory: ' + str(self._lags[Inofit]))
             self._lags = self._lags[Ifit]
 
         ### RUN ESTIMATION
@@ -143,23 +143,32 @@ class ImpliedTimescales(Estimator, ProgressReporter):
             self.estimator.show_progress = False
 
         # run estimation on all lag times
-        self._models, self._estimators = estimate_param_scan(self.estimator,
-                                                             data, param_sets,
-                                                             return_estimators=True,
-                                                             n_jobs=self.n_jobs,
+        self._models, self._estimators = estimate_param_scan(self.estimator, data, param_sets, failfast=False,
+                                                             return_estimators=True, n_jobs=self.n_jobs,
                                                              progress_reporter=self)
 
         ### PROCESS RESULTS
+        # if some results are None, estimation has failed. Warn and truncate models and lag times
+        good = np.array([i for i, m in enumerate(self._models) if m is not None], dtype=int)
+        bad = np.array([i for i, m in enumerate(self._models) if m is None], dtype=int)
+        if good.size == 0:
+            raise RuntimeError('Estimation has failed at ALL lagtimes. Check for errors.')
+        if bad.size > 0:
+            self.logger.warning('Estimation has failed at lagtimes: ' + str(self._lags[bad])
+                                + '. Run single-lag estimation at these lags to track down the error.')
+            self._lags = self._lags[good]
+            self._models = list(np.array(self._models)[good])
+
         # timescales
         timescales = [m.timescales() for m in self._models]
 
-        # how many finity timescales do we really have?
+        # how many finite timescales do we really have?
         maxnts = max([len(ts[np.isfinite(ts)]) for ts in timescales])
         if self.nits is None:
             self.nits = maxnts
         if maxnts < self.nits:
             self.nits = maxnts
-            self.logger.warn('Changed user setting nits to the number of available timescales nits=' + str(self.nits))
+            self.logger.warning('Changed user setting nits to the number of available timescales nits=' + str(self.nits))
 
         # sort timescales into matrix
         computed_all = True  # flag if we have found any problems
@@ -194,8 +203,8 @@ class ImpliedTimescales(Estimator, ProgressReporter):
                 computed_all = False
 
         if not computed_all:
-            self.logger.warn('Some timescales could not be computed. Timescales array is smaller than '
-                             'expected or contains NaNs')
+            self.logger.warning('Some timescales could not be computed. Timescales array is smaller than '
+                                'expected or contains NaNs')
 
     @property
     def lagtimes(self):

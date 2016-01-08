@@ -159,8 +159,8 @@ def aliased(aliased_class):
 
 def shortcut(*names):
     """Add an shortcut (alias) to a decorated function, but not to class methods!
-    
-    use aliased/alias decorators for class members!
+
+    Use aliased/alias decorators for class members!
 
     Calling the shortcut (alias) will call the decorated function. The shortcut name will be appended
     to the module's __all__ variable and the shortcut function will inherit the function's docstring
@@ -175,17 +175,15 @@ def shortcut(*names):
     >>> is_tmatrix(args) # doctest: +SKIP
 
     """
-    # TODO: this does not work (is not tested with class member functions)
-    # it is not possible to reliably determine if a function is a member function, until it is bound
     def wrap(f):
-        # TODO: this is wrong for class member shortcuts
-        globals_ = f.__globals__ if PY2 else f.__globals__
+        globals_ = f.__globals__
         for name in names:
             globals_[name] = f
             if '__all__' in globals_ and name not in globals_['__all__']:
                 globals_['__all__'].append(name)
         return f
     return wrap
+
 
 def deprecated(*optional_message):
     """This is a decorator which can be used to mark functions
@@ -199,18 +197,24 @@ def deprecated(*optional_message):
 
     """
     def _deprecated(func, *args, **kw):
-        caller_frame = stack()[1]
-        filename = caller_frame[0].f_globals.get('__file__', None)
-        lineno = func.__code__.co_firstlineno + 1
+        caller_stack = stack()[1:]
+        while len(caller_stack) > 0:
+            frame = caller_stack.pop(0)
+            filename = frame[1]
+            # skip callee frames if they are other decorators or this file(func)
+            if 'decorator' in filename or __file__ in filename:
+                continue
+            else: break
+        lineno = frame[2]
 
-        user_msg = "Call to deprecated function %s. Called from %s line %i. %s" \
+        user_msg = 'Call to deprecated function "%s". Called from %s line %i. %s' \
                    % (func.__name__, filename, lineno, msg)
 
         warnings.warn_explicit(
             user_msg,
             category=DeprecationWarning,
-            filename=func.__code__.co_filename,
-            lineno=func.__code__.co_firstlineno + 1
+            filename=filename,
+            lineno=lineno
         )
         return func(*args, **kw)
     if len(optional_message) == 1 and callable(optional_message[0]):
@@ -221,6 +225,7 @@ def deprecated(*optional_message):
         # actually got a message (or empty parenthesis)
         msg = optional_message[0] if len(optional_message) > 0 else ""
         return decorator(_deprecated)
+
 
 @decorator
 def estimation_required(func, *args, **kw):
