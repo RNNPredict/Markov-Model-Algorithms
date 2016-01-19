@@ -83,22 +83,22 @@ class TRAM(_Estimator, _MultiThermModel):
         # find dimensions
         self.nthermo = int(max(_np.max(ttraj[:, 0]) for ttraj in trajs))+1
         if multi_disc:
-            self.nstates_full = int(max(_np.max(ttraj[:, 1:1+self.nthermo]) for ttraj in trajs))+1
+            self.nstates_full = int(max(_np.max(ttraj[:, 1:1 + self.nthermo]) for ttraj in trajs)) + 1
         else:
-            self.nstates_full = int(max(_np.max(ttraj[:, 1]) for ttraj in trajs))+1
+            self.nstates_full = int(max(_np.max(ttraj[:, 1]) for ttraj in trajs)) + 1
 
         for ttraj in trajs:
             if multi_disc:
-                assert ttraj.shape[1] == 2*self.nthermo+1
+                assert ttraj.shape[1] == 2*self.nthermo + 1
             else:
-                assert ttraj.shape[1] == self.nthermo+2
+                assert ttraj.shape[1] == self.nthermo + 2
 
         # generating_state_trajs contain the origin of every frame
         # (in contrast to conf_state_sequence below where the origin not encoded)
         if multi_disc:
-            self.generating_state_trajs = [_np.ascontiguousarray(_np.hstack((ttraj[:,1+ttraj[:,0].astype(int)], ttraj[:,0])), dtype=_np.intc) for ttraj in trajs]
+            self.generating_state_trajs = [_np.ascontiguousarray(_np.hstack((ttraj[:, 1 + ttraj[:, 0].astype(int)], ttraj[:, 0])), dtype=_np.intc) for ttraj in trajs]
         else:
-            self.generating_state_trajs = [_np.ascontiguousarray(ttraj[:,0:2],dtype=_np.intc) for ttraj in trajs]
+            self.generating_state_trajs = [_np.ascontiguousarray(ttraj[:, 0:2], dtype=_np.intc) for ttraj in trajs]
 
         # find state visits and dimensions
         self.state_counts_full = _util.state_counts(self.generating_state_trajs)
@@ -130,25 +130,23 @@ class TRAM(_Estimator, _MultiThermModel):
         print 'size of projected connected set is', len(pcset)
 
         if multi_disc:
-            self.conf_state_sequence = tramtrajs[:,1:1+self.nthermo].T
-            self.bias_energy_sequence = tramtrajs[:,1+self.nthermo:].T
+            self.conf_state_sequence = tramtrajs[:, 1:1 + self.nthermo].T
+            self.bias_energy_sequence = tramtrajs[:, 1 + self.nthermo:].T
         else:
-            self.conf_state_sequence = tramtrajs[:,1]
-            self.bias_energy_sequence = tramtrajs[:,2:].T
+            self.conf_state_sequence = tramtrajs[:, 1]
+            self.bias_energy_sequence = tramtrajs[:, 2:].T
         self.conf_state_sequence = _np.require(self.conf_state_sequence, dtype=_np.intc, requirements=['C', 'A'])
         self.bias_energy_sequence = _np.require(self.bias_energy_sequence, dtype=_np.float64, requirements=['C', 'A'])
 
         # self-test
         assert _np.all(self.state_counts >= _np.maximum(self.count_matrices.sum(axis=1), self.count_matrices.sum(axis=2)))
-        assert _np.all(_np.bincount(tramtrajs[:,0].astype(int), minlength=self.nthermo) == self.state_counts.sum(axis=1))
-        generating_conf_state_sequence = _np.concatenate([gtraj[:,1] for gtraj in self.generating_state_trajs])
+        assert _np.all(_np.bincount(tramtrajs[:, 0].astype(int), minlength=self.nthermo) == self.state_counts.sum(axis=1))
+        generating_conf_state_sequence = _np.concatenate([gtraj[:, 1] for gtraj in self.generating_state_trajs])
         assert _np.all(_np.bincount(generating_conf_state_sequence, minlength=self.nstates_full) == self.state_counts.sum(axis=0))
         del generating_conf_state_sequence
 
-        self.trajs = trajs # used in pointwise-free-energy methods
-
         for k in range(self.state_counts.shape[0]):
-            if self.count_matrices[k,:,:].sum() == 0:
+            if self.count_matrices[k, :, :].sum() == 0:
                 warnings.warn('Thermodynamic state %d contains no transitions after reducing to the connected set.'%k, EmptyState)
 
         if self.initialization == 'MBAR' and self.mbar_biased_conf_energies is None:
@@ -163,11 +161,11 @@ class TRAM(_Estimator, _MultiThermModel):
                 mbar = _mbar
 
             if multi_disc:
-                self.conf_state_sequence_full = tramtrajs_full[:,1:1+self.nthermo].T
-                self.bias_energy_sequence_full = tramtrajs_full[:,1+self.nthermo:].T
+                self.conf_state_sequence_full = tramtrajs_full[:, 1:1 + self.nthermo].T
+                self.bias_energy_sequence_full = tramtrajs_full[:, 1 + self.nthermo:].T
             else:
-                self.conf_state_sequence_full = tramtrajs_full[:,1]
-                self.bias_energy_sequence_full = tramtrajs_full[:,2:].T
+                self.conf_state_sequence_full = tramtrajs_full[:, 1]
+                self.bias_energy_sequence_full = tramtrajs_full[:, 2:].T
 
             self.conf_state_sequence_full = _np.require(self.conf_state_sequence_full, dtype=_np.intc, requirements=['C', 'A'])
             self.bias_energy_sequence_full = _np.require(self.bias_energy_sequence_full, dtype=_np.float64, requirements=['C', 'A'])
@@ -233,12 +231,12 @@ class TRAM(_Estimator, _MultiThermModel):
             valid[k,cset] = True
         for traj in self.generating_state_trajs:
             full_size = traj.shape[0]
-            ok_traj = valid[traj[:,0].astype(int), traj[:,1].astype(int)]
+            ok_traj = valid[traj[:, 0].astype(int), traj[:, 1].astype(int)]
             restricted_size = _np.count_nonzero(ok_traj)
             mu_traj = _np.ones(shape=full_size, dtype=_np.float64)*_np.inf
-            mu_traj[ok_traj] = mu_cset[j:j+restricted_size]
+            mu_traj[ok_traj] = mu_cset[j:j + restricted_size]
             mu_trajs.append(mu_traj)
-            j+= restricted_size
+            j += restricted_size
         assert j==mu_cset.shape[0]
         return mu_trajs
 
