@@ -32,7 +32,7 @@ def tower_sample(distribution):
     return np.searchsorted(cdf, rnd)
 
 def generate_trajectory(transition_matrices, bias_energies, K, n_samples, x0):
-    """generates a list of TRAM trajs"""
+    """generates a list of single-disc TRAM trajs"""
 
     traj = np.zeros((n_samples,2+bias_energies.shape[0]))
     x = x0
@@ -50,7 +50,7 @@ def generate_trajectory(transition_matrices, bias_energies, K, n_samples, x0):
     return traj
 
 def generate_simple_trajectory(transition_matrix, n_samples, x0):
-    """generates a list of TRAM trajs"""
+    """generates a single disctraj, sampled according to transition_matrix"""
 
     n_states = transition_matrix.shape[0]
     traj = np.zeros(n_samples)
@@ -242,6 +242,7 @@ class TestTRAMwithTRAMmodel(unittest.TestCase):
         cls.n_conf_states = n_conf_states
         cls.n_therm_states = n_therm_states
         cls.n_micro_states = n_micro_states
+        cls.traj_length = traj_length
         cls.tramtrajs = tramtrajs
         cls.z = z
         cls.T = T
@@ -251,16 +252,40 @@ class TestTRAMwithTRAMmodel(unittest.TestCase):
         cls.mu = mu
         cls.xes = xes
 
-    def test_with_TRAM_model_direct(self):
-        self.with_TRAM_model(True)
+    def test_with_TRAM_model_direct_space_multi_disc(self):
+        # reformat team-trajs to multi-disc format (trivial case)
+        new_tramtrajs = []
+        for traj in self.tramtrajs:
+            new_traj = np.zeros((self.traj_length, 1+2*self.n_therm_states), dtype=np.float64)
+            new_traj[:, 0] = traj[:, 0]
+            new_traj[:, 1:1 + self.n_therm_states] = traj[:, 1, np.newaxis]
+            new_traj[:, 1 + self.n_therm_states:] = traj[:, 2:]
+            new_tramtrajs.append(new_traj)
+        self.tramtrajs = new_tramtrajs
+        self.with_TRAM_model(False, True)
+
+    def test_with_TRAM_model_log_space_multi_disc(self):
+        # reformat team-trajs to multi-disc format (trivial case)
+        new_tramtrajs = []
+        for traj in self.tramtrajs:
+            new_traj = np.zeros((self.traj_length, 1+2*self.n_therm_states), dtype=np.float64)
+            new_traj[:, 0] = traj[:, 0]
+            new_traj[:, 1:1 + self.n_therm_states] = traj[:, 1, np.newaxis]
+            new_traj[:, 1 + self.n_therm_states:] = traj[:, 2:]
+            new_tramtrajs.append(new_traj)
+        self.tramtrajs = new_tramtrajs
+        self.with_TRAM_model(True, True)
+
+    def test_with_TRAM_model_direct_space(self):
+        self.with_TRAM_model(True, False)
 
     def test_with_TRAM_model_log_space(self):
-        self.with_TRAM_model(False)
+        self.with_TRAM_model(False, False)
 
-    def with_TRAM_model(self, direct_space):
+    def with_TRAM_model(self, direct_space, multi_disc):
         # run TRAM
         tram = pyemma.thermo.TRAM(lag=1, maxerr=1E-12, lll_out=10, direct_space=direct_space, nn=None)
-        tram.estimate(self.tramtrajs)
+        tram.estimate(self.tramtrajs, multi_disc=multi_disc)
 
         # csets must include all states
         for k in range(self.n_therm_states):
