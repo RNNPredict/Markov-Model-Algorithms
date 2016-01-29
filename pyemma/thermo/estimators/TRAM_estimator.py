@@ -36,7 +36,7 @@ class TRAM(_Estimator, _MultiThermModel):
                  dt_traj='1 step', maxiter=1000, maxerr=1e-5, callback=None,
                  connectivity = 'summed_count_matrix', 
                  nn=None, N_dtram_accelerations=0,
-                 dTRAM_mode=False, direct_space=False,
+                 direct_space=False, report_lost=False,
                  initialization='MBAR', err_out=0, lll_out=0, multi_disc=False
                  ):
         self.lag = lag
@@ -54,12 +54,13 @@ class TRAM(_Estimator, _MultiThermModel):
         self.log_lagrangian_mult = None
         self.callback = callback
         self.direct_space = direct_space
+        self.report_lost = report_lost
         self.initialization = initialization
         self.N_dtram_accelerations = N_dtram_accelerations
         self.err_out = err_out
         self.lll_out = lll_out
         self.nn = nn
-        self.multi_disc = False
+        self.multi_disc = multi_disc
 
     def _estimate(self, trajs):
         """
@@ -137,7 +138,19 @@ class TRAM(_Estimator, _MultiThermModel):
                                                                 tramtrajs_full,
                                                                 self.csets,
                                                                 multi_disc=self.multi_disc)
-        print 'size of projected connected set is', len(pcset)
+        if self.report_lost:
+            print 'size of projected connected set is', len(pcset)
+            N_lost_total = self.state_counts_full.sum() - self.state_counts.sum()
+            print 'Totally %d frames were removed' % N_lost_total
+            if N_lost_total > 0:
+                print 'ensemble, frames lost'
+                for k in range(self.nthermo):
+                    n_lost_k = self.state_counts_full[k,:].sum() - self.state_counts[k,:].sum()
+                    print k, n_lost_k
+                print 'conf. state, frames lost'
+                for n in range(self.nstates_full):
+                    n_lost_n = self.state_counts_full[:,n].sum() - self.state_counts[:,n].sum()
+                    print n, n_lost_n
 
         if self.multi_disc:
             self.conf_state_sequence = tramtrajs[:, 1:1 + self.nthermo].T
