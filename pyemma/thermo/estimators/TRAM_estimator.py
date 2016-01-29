@@ -146,11 +146,13 @@ class TRAM(_Estimator, _MultiThermModel):
                 print 'ensemble, frames lost'
                 for k in range(self.nthermo):
                     n_lost_k = self.state_counts_full[k,:].sum() - self.state_counts[k,:].sum()
-                    print k, n_lost_k
+                    if n_lost_k > 0:
+                        print k, n_lost_k
                 print 'conf. state, frames lost'
                 for n in range(self.nstates_full):
                     n_lost_n = self.state_counts_full[:,n].sum() - self.state_counts[:,n].sum()
-                    print n, n_lost_n
+                    if n_lost_n > 0:
+                        print n, n_lost_n
 
         if self.multi_disc:
             self.conf_state_sequence = tramtrajs[:, 1:1 + self.nthermo].T
