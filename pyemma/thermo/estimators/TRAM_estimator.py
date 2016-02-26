@@ -37,7 +37,7 @@ class TRAM(_Estimator, _MultiThermModel):
                  connectivity = 'summed_count_matrix', 
                  nn=None, N_dtram_accelerations=0,
                  direct_space=False, report_lost=False,
-                 initialization='MBAR', err_out=0, lll_out=0, multi_disc=False
+                 initialization='MBAR', save_convergence_info=0, multi_disc=False
                  ):
         self.lag = lag
         self.ground_state = ground_state
@@ -45,8 +45,7 @@ class TRAM(_Estimator, _MultiThermModel):
         self.dt_traj = dt_traj
         self.maxiter = maxiter
         self.maxerr = maxerr
-        self.err_out = err_out
-        self.lll_out = lll_out
+        self.save_convergence_info = save_convergence_info
         self.connectivity = connectivity
         self.model_active_set = None
         self.biased_conf_energies = None
@@ -57,8 +56,6 @@ class TRAM(_Estimator, _MultiThermModel):
         self.report_lost = report_lost
         self.initialization = initialization
         self.N_dtram_accelerations = N_dtram_accelerations
-        self.err_out = err_out
-        self.lll_out = lll_out
         self.nn = nn
         self.multi_disc = multi_disc
 
@@ -213,8 +210,7 @@ class TRAM(_Estimator, _MultiThermModel):
             maxiter = self.maxiter, maxerr = self.maxerr,
             log_lagrangian_mult = self.log_lagrangian_mult,
             biased_conf_energies = self.biased_conf_energies,
-            err_out = self.err_out,
-            lll_out = self.lll_out,
+            save_convergence_info = self.save_convergence_info,
             callback = self.callback,
             N_dtram_accelerations = self.N_dtram_accelerations)
 

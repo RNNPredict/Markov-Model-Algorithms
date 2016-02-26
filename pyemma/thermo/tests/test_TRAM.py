@@ -129,7 +129,7 @@ class TestTRAMwith5StateDTRAMModel(unittest.TestCase):
         self.run_5_state_model(True)
 
     def run_5_state_model(self, direct_space):
-        tram = pyemma.thermo.TRAM(lag=1, maxerr=1E-12, lll_out=10, direct_space=direct_space, nn=1)
+        tram = pyemma.thermo.TRAM(lag=1, maxerr=1E-12, save_convergence_info=10, direct_space=direct_space, nn=1)
         tram.estimate(self.trajs)
 
         log_pi_K_i = tram.biased_conf_energies.copy()
@@ -175,7 +175,7 @@ class TestTRAMasReversibleMSM(unittest.TestCase):
         self.reversible_msm(True)
 
     def reversible_msm(self, direct_space):
-        tram = pyemma.thermo.TRAM(lag=1,maxerr=1.E-20, lll_out=10, direct_space=direct_space, nn=None)
+        tram = pyemma.thermo.TRAM(lag=1,maxerr=1.E-20, save_convergence_info=10, direct_space=direct_space, nn=None)
         tram.estimate(self.tram_traj)
         assert np.allclose(self.T_ref,  tram.models[0].transition_matrix, atol=1.E-4)
 
@@ -284,7 +284,7 @@ class TestTRAMwithTRAMmodel(unittest.TestCase):
 
     def with_TRAM_model(self, direct_space, multi_disc):
         # run TRAM
-        tram = pyemma.thermo.TRAM(lag=1, maxerr=1E-12, lll_out=10, direct_space=direct_space, nn=None)
+        tram = pyemma.thermo.TRAM(lag=1, maxerr=1E-12, save_convergence_info=10, direct_space=direct_space, nn=None)
         tram.estimate(self.tramtrajs, multi_disc=multi_disc)
 
         # csets must include all states
