@@ -34,10 +34,9 @@ class EmptyState(RuntimeWarning):
 class TRAM(_Estimator, _MultiThermModel):
     def __init__(self, lag=1, ground_state=None, count_mode='sliding',
                  dt_traj='1 step', maxiter=1000, maxerr=1e-5, callback=None,
-                 connectivity = 'summed_count_matrix', 
-                 nn=None, N_dtram_accelerations=0,
-                 dTRAM_mode=False, direct_space=False,
-                 initialization='MBAR', err_out=0, lll_out=0
+                 connectivity = 'summed_count_matrix', nn=None,
+                 N_dtram_accelerations=0,
+                 direct_space=False, initialization='MBAR', save_convergence_info=0
                  ):
         self.lag = lag
         self.ground_state = ground_state
@@ -45,21 +44,16 @@ class TRAM(_Estimator, _MultiThermModel):
         self.dt_traj = dt_traj
         self.maxiter = maxiter
         self.maxerr = maxerr
-        self.err_out = err_out
-        self.lll_out = lll_out
-        # set cset variable
+        self.save_convergence_info = save_convergence_info
         self.connectivity = connectivity
         self.model_active_set = None
-        # set iteration variables
         self.biased_conf_energies = None
         self.mbar_biased_conf_energies = None
         self.log_lagrangian_mult = None
-        self.call_back = callback
-        self._direct_space = direct_space
+        self.callback = callback
+        self.direct_space = direct_space
         self.initialization = initialization
         self.N_dtram_accelerations = N_dtram_accelerations
-        self.err_out = err_out
-        self.lll_out = lll_out
         self.nn = nn
 
     def _estimate(self, trajs):
@@ -88,7 +82,7 @@ class TRAM(_Estimator, _MultiThermModel):
             assert ttraj.shape[1] == self.nthermo+2
 
         # find state visits and dimensions
-        self.state_counts_full = _util.state_counts(trajs)
+        self.state_counts_full = _util.state_counts([t[:, 0] for t in trajs], [t[:, 1] for t in trajs])
         self.nstates_full = self.state_counts_full.shape[1]
         self.nthermo = self.state_counts_full.shape[0]
 
@@ -136,7 +130,7 @@ class TRAM(_Estimator, _MultiThermModel):
             def MBAR_printer(**kwargs):
                 if kwargs['iteration_step'] % 100 == 0:
                      print 'preMBAR', kwargs['iteration_step'], kwargs['err']
-            if self._direct_space:
+            if self.direct_space:
                 mbar = _mbar_direct
             else:
                 mbar = _mbar
@@ -151,7 +145,7 @@ class TRAM(_Estimator, _MultiThermModel):
             self.biased_conf_energies = self.mbar_biased_conf_energies.copy()
 
         # run estimator
-        if self._direct_space:
+        if self.direct_space:
             tram = _tram_direct
         else:
             tram = _tram
@@ -160,9 +154,8 @@ class TRAM(_Estimator, _MultiThermModel):
             maxiter = self.maxiter, maxerr = self.maxerr,
             log_lagrangian_mult = self.log_lagrangian_mult,
             biased_conf_energies = self.biased_conf_energies,
-            err_out = self.err_out,
-            lll_out = self.lll_out,
-            callback = self.call_back,
+            save_convergence_info = self.save_convergence_info,
+            callback = self.callback,
             N_dtram_accelerations = self.N_dtram_accelerations)
 
         # compute models
